@@ -1,0 +1,104 @@
+services:
+# uncomment this when you want to try your app in container
+# app
+  # backend:
+  #  build:
+  #    context: .
+  #    dockerfile: Dockerfile
+  #  container_name: backend
+  #  restart: unless-stopped
+  #  depends_on:
+  #    - backend_db
+  #    - backend_mq
+  #    - backend_cache
+  #    - backend_storage
+  #  ports:
+  #    - "443:443"
+  #   #make sure to mount the config file to /
+  #   #change to config.yaml and ENV "production" for production
+  #  volumes:
+  #    - ./config.yaml:/config.yaml
+  #    - ./config/cert/:/config/cert/
+  #  environment:
+  #    - ENV=${ENV}
+  #  command: "/backend"
+
+# db
+  backend_db:
+    image: postgres:17.5-alpine3.22
+    container_name: backend_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - backend_db_data:/var/lib/postgresql/data
+
+# nats
+  backend_mq:
+    image: nats:2.11.9
+    container_name: backend_mq
+    restart: unless-stopped
+    volumes:
+      - ./config/mq/nats-server.conf:/etc/nats/nats.conf
+      - backend_nats_data:/nats:rw
+      - backend_nats_jetstream-data:/jetstream/data:rw
+    environment:
+      - NATS_USER=${MQ_USER}
+      - NATS_PASSWORD=${MQ_PASSWORD}
+    ports:
+      -  "8081:8081"
+    command: "-c /etc/nats/nats.conf --name nats -p 4221"
+
+# valkey
+  backend_cache:
+    image: valkey/valkey:9-alpine3.22
+    container_name: backend_cache
+    volumes:
+      - backend_valkey_data:/data
+      - ./config/cache/valkey.acl:/etc/valkey/valkey.acl
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["valkey-server", "--aclfile", "/etc/valkey/valkey.acl"]
+
+# rustfs
+  backend_storage:
+    image: rustfs/rustfs:1.0.0-alpha.76
+    container_name: backend_storage
+    environment:
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_ADDRESS=0.0.0.0:9000
+      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+      - RUSTFS_EXTERNAL_ADDRESS=:9000 # Same as internal since no port mapping
+      - RUSTFS_CORS_ALLOWED_ORIGINS=*
+      - RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS=*
+      - RUSTFS_ACCESS_KEY=${OS_ROOT_USER}
+      - RUSTFS_SECRET_KEY=${OS_ROOT_PASSWORD}
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - backend_rustfs_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "sh", "-c",
+          "curl -f http://localhost:9000/health && curl -f http://localhost:9001/rustfs/console/health"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  backend_db_data: {}
+  backend_nats_data: {}
+  backend_nats_jetstream-data: {}
+  backend_valkey_data: {}
+  backend_rustfs_data: {}
