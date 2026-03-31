@@ -32,6 +32,7 @@ func NewHTTPChi() *chi.Mux {
 		AllowCredentials: allowCredentials,
 		MaxAge:           maxAge,
 	}).Handler)
+	r.Use(middleware.Recoverer)
 
 	return r
 }

@@ -31,7 +31,7 @@ func (s *Server) Run(ctx context.Context) {
 			cache valkey.Client,
 			mq *nats.Conn,
 			db *pgxpool.Pool,
-			th handler.TodoHandler,
+			ph handler.ProjectHandler,
 			// and many other returned type provided
 			// in the container from /cmd/di/container.go
 		) {
@@ -47,7 +47,7 @@ func (s *Server) Run(ctx context.Context) {
 			// you can register your routes here
 			// for the example and implementation, here is the example
 
-			handler.RegisterTodoRoutes(r, th)
+			handler.RegisterProjectRoutes(r, ph)
 
 			srv := &http.Server{
 				Addr:              s.Address,
