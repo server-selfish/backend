@@ -6,31 +6,56 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/server-selfish/backend/internal/domain/repository"
 )
 
 type (
-	Querier interface {
-		QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-		Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-		Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	txImpl struct {
+		tx pgx.Tx
 	}
-
-	pgxQuerier struct {
+	querier struct {
 		pgx *pgxpool.Pool
 	}
 )
 
-func NewQuerier(pool *pgxpool.Pool) Querier {
-	return &pgxQuerier{pgx: pool}
+func NewQuerier(pool *pgxpool.Pool) repository.Querier {
+	return &querier{pgx: pool}
 }
 
-func (p *pgxQuerier) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+func (p *querier) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	return p.pgx.QueryRow(ctx, sql, args...)
 }
-func (p *pgxQuerier) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+func (p *querier) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	return p.pgx.Exec(ctx, sql, args...)
 }
 
-func (p *pgxQuerier) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+func (p *querier) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	return p.pgx.Query(ctx, sql, args...)
+}
+
+func NewTx(tx pgx.Tx) repository.Tx {
+	return &txImpl{tx: tx}
+}
+
+func (t *txImpl) Commit(ctx context.Context) error {
+	return t.tx.Commit(ctx)
+}
+
+func (t *txImpl) Rollback(ctx context.Context) error {
+	return t.tx.Rollback(ctx)
+}
+
+// Exec implements [Tx].
+func (t *txImpl) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	return t.Exec(ctx, sql, args...)
+}
+
+// Query implements [Tx].
+func (t *txImpl) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return t.Query(ctx, sql, args...)
+}
+
+// QueryRow implements [Tx].
+func (t *txImpl) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return t.QueryRow(ctx, sql, args...)
 }
