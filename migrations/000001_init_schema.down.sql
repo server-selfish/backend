@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS project;
+DROP TABLE IF EXISTS container;
+DROP TABLE IF EXISTS deployment;

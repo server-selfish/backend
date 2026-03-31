@@ -2,7 +2,7 @@
 .PHONY: run docker-build
 
 # run app with go run command
-run: 
+run:
 	@go run cmd/main.go
 
 # build app docker image
@@ -11,6 +11,17 @@ docker-build:
 
 dev-start:
 	@docker compose up -d
+
+# migrations
+
+migrate-up:
+	@migrate -path migrations/ -database "postgresql://myusername:password@localhost:5432/selfish?sslmode=disable" -verbose up
+
+migrate-down:
+	@migrate -path migrations/ -database "postgresql://myusername:password@localhost:5432/selfish?sslmode=disable" -verbose down
+
+migrate-status:
+	@migrate -path migrations/ -database "postgresql://myusername:password@localhost:5432/selfish?sslmode=disable" version
 
 # genereate self sign certificate for tls for 1 year
 cert-gen:
