@@ -7,13 +7,12 @@ import (
 	"github.com/server-selfish/backend/config/mq"
 	"github.com/server-selfish/backend/config/router"
 	"github.com/server-selfish/backend/config/storage"
-	"github.com/server-selfish/backend/internal/domain/factory"
 	"github.com/server-selfish/backend/internal/domain/handler"
+	project_repository "github.com/server-selfish/backend/internal/domain/repository/project"
 	"github.com/server-selfish/backend/internal/domain/service"
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
 	mq_infra "github.com/server-selfish/backend/internal/infra/mq"
 	storage_infra "github.com/server-selfish/backend/internal/infra/storage"
-	"github.com/server-selfish/backend/internal/pkg"
 	"go.uber.org/dig"
 )
 
@@ -64,18 +63,10 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(storage_infra.NewRustfsInfra); err != nil {
 		panic("Failed to provide object storage infra: " + err.Error())
 	}
-	// if err := container.Provide(storage_infra.NewQuerier); err != nil {
-	// 	panic("Failed to provide querier infra: " + err.Error())
-	// }
 
-	// utils
-
-	if err := container.Provide(pkg.NewTxRunner); err != nil {
-		panic("Failed to provide Transaction Runner: " + err.Error())
-	}
 	// repo
-	if err := container.Provide(factory.NewProjectRepoFactory); err != nil {
-		panic("Failed to provide Project Repository Factory: " + err.Error())
+	if err := container.Provide(project_repository.New); err != nil {
+		panic("Failed to provide Project repository: " + err.Error())
 	}
 
 	// service
