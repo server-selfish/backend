@@ -3,7 +3,11 @@ package handler
 import "github.com/go-chi/chi/v5"
 
 func RegisterProjectRoutes(r *chi.Mux, ph ProjectHandler) {
-	// r.Post("/todo", th.AddNewTodo)
+	r.Post("/project", ph.CreateProject)
+	r.Get("/project", ph.GetAllProjects)
+	r.Get("/project/{id}", ph.GetProjectById)
+	r.Patch("/project/{id}", ph.UpdateProjectById)
+	r.Delete("/project/{id}", ph.DeleteProjectById)
 }
 
 func RegisterDeploymentRoutes(r *chi.Mux, dh DeploymentHandler) {

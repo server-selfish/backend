@@ -17,7 +17,7 @@ type (
 		CreateProject(ctx context.Context, params *schema.CreateProjectParams) error
 		GetAllProjects(ctx context.Context) ([]schema.GetProjectsData, error)
 		GetProjectById(ctx context.Context, id pgtype.UUID) (schema.GetProjectsData, error)
-		UpdateProjectById(ctx context.Context, params *schema.UpdateProjectParams) error
+		UpdateProjectById(ctx context.Context, id pgtype.UUID, params *schema.UpdateProjectParams) error
 		DeleteProjectById(ctx context.Context, id pgtype.UUID) error
 	}
 	projectService struct {
@@ -76,8 +76,7 @@ func (ps *projectService) GetProjectById(ctx context.Context, id pgtype.UUID) (s
 }
 
 // UpdateProjectById implements [ProjectService].
-func (ps *projectService) UpdateProjectById(ctx context.Context, params *schema.UpdateProjectParams) error {
-	id, _ := pkg.StringToPgUUID(params.ID)
+func (ps *projectService) UpdateProjectById(ctx context.Context, id pgtype.UUID, params *schema.UpdateProjectParams) error {
 	if err := ps.pr.UpdateProjectById(ctx, project_repository.UpdateProjectByIdParams{
 		Name:        params.Name,
 		Description: pgtype.Text{String: params.Description},

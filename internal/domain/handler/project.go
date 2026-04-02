@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
@@ -29,12 +30,13 @@ func NewProjectHandler(ps service.ProjectService) ProjectHandler {
 
 // DeleteProjectById implements [ProjectHandler].
 func (p *projectHandler) DeleteProjectById(w http.ResponseWriter, r *http.Request) {
-	req, ok := pkg.DecodeAndValidate[schema.DeleteProjectParams](w, r)
-	if !ok {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
 	ctx := r.Context()
-	id, err := pkg.StringToPgUUID(req.ID)
+	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
@@ -59,12 +61,13 @@ func (p *projectHandler) GetAllProjects(w http.ResponseWriter, r *http.Request) 
 
 // GetProjectById implements [ProjectHandler].
 func (p *projectHandler) GetProjectById(w http.ResponseWriter, r *http.Request) {
-	req, ok := pkg.DecodeAndValidate[schema.GetProjectParams](w, r)
-	if !ok {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
 	ctx := r.Context()
-	id, err := pkg.StringToPgUUID(req.ID)
+	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
@@ -79,17 +82,23 @@ func (p *projectHandler) GetProjectById(w http.ResponseWriter, r *http.Request) 
 
 // UpdateProjectById implements [ProjectHandler].
 func (p *projectHandler) UpdateProjectById(w http.ResponseWriter, r *http.Request) {
-	req, ok := pkg.DecodeAndValidate[schema.UpdateProjectParams](w, r)
-	if !ok {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	ctx := r.Context()
-	_, err := pkg.StringToPgUUID(req.ID)
+	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	if err := p.ps.UpdateProjectById(ctx, &req); err != nil {
+
+	req, ok := pkg.DecodeAndValidateBody[schema.UpdateProjectParams](w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	if err := p.ps.UpdateProjectById(ctx, id, &req); err != nil {
 		pkg.ReturnError(w, err)
 		return
 	}
@@ -98,7 +107,7 @@ func (p *projectHandler) UpdateProjectById(w http.ResponseWriter, r *http.Reques
 
 // CreateProject implements [ProjectHandler].
 func (p *projectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
-	req, ok := pkg.DecodeAndValidate[schema.CreateProjectParams](w, r)
+	req, ok := pkg.DecodeAndValidateBody[schema.CreateProjectParams](w, r)
 	if !ok {
 		return
 	}
