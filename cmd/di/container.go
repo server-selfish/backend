@@ -13,6 +13,7 @@ import (
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
 	mq_infra "github.com/server-selfish/backend/internal/infra/mq"
 	storage_infra "github.com/server-selfish/backend/internal/infra/storage"
+	"github.com/server-selfish/backend/internal/pkg"
 	"go.uber.org/dig"
 )
 
@@ -62,6 +63,11 @@ func BuildContainer() *dig.Container {
 	}
 	if err := container.Provide(storage_infra.NewRustfsInfra); err != nil {
 		panic("Failed to provide object storage infra: " + err.Error())
+	}
+
+	// utils
+	if err := container.Provide(pkg.NewTxManager); err != nil {
+		panic("Failed to provide tx manager: " + err.Error())
 	}
 
 	// repo
