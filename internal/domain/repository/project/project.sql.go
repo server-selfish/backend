@@ -12,18 +12,17 @@ import (
 )
 
 const createProject = `-- name: CreateProject :exec
-INSERT INTO public.project (id,name,description)
-VALUES ($1,$2,$3)
+INSERT INTO public.project (name,description)
+VALUES ($1,$2)
 `
 
 type CreateProjectParams struct {
-	ID          pgtype.UUID
 	Name        string
 	Description pgtype.Text
 }
 
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) error {
-	_, err := q.db.Exec(ctx, createProject, arg.ID, arg.Name, arg.Description)
+	_, err := q.db.Exec(ctx, createProject, arg.Name, arg.Description)
 	return err
 }
 

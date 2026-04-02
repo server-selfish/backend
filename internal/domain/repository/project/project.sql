@@ -12,8 +12,8 @@ WHERE
   p.id = $1;
 
 -- name: CreateProject :exec
-INSERT INTO public.project (id,name,description)
-VALUES ($1,$2,$3);
+INSERT INTO public.project (name,description)
+VALUES ($1,$2);
 
 -- name: UpdateProjectById :exec
 UPDATE public.project
