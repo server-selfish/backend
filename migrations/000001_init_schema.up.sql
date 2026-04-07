@@ -9,8 +9,6 @@ CREATE TABLE IF NOT EXISTS project(
 CREATE TABLE IF NOT EXISTS deployment(
 	id UUID PRIMARY KEY DEFAULT uuidv7(),
   name VARCHAR NOT NULL,
-  s3_remote_url VARCHAR,
-  version varchar,
   project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ,
@@ -20,7 +18,6 @@ CREATE TABLE IF NOT EXISTS deployment(
 CREATE TABLE IF NOT EXISTS container(
 	id UUID PRIMARY KEY DEFAULT uuidv7(),
   name VARCHAR NOT NULL,
-  port_exposed integer[],
   deployment_id UUID NOT NULL UNIQUE REFERENCES deployment(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ
