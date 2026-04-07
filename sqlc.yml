@@ -8,3 +8,12 @@ sql:
         package: "project_repository"
         out: "internal/domain/repository/project"
         sql_package: "pgx/v5"
+
+  - engine: "postgresql"
+    queries: "internal/domain/repository/deployment/deployment.sql"
+    schema: "internal/domain/repository/db_schema"
+    gen:
+      go:
+        package: "deployment_repository"
+        out: "internal/domain/repository/deployment"
+        sql_package: "pgx/v5"

@@ -1,8 +1,8 @@
 CREATE TABLE IF NOT EXISTS deployment_techstack(
   id SERIAL PRIMARY KEY,
-  name VARCHAR NOT NULL, --js, go, python
+  name VARCHAR NOT NULL,
   version VARCHAR NOT NULL
-)
+);
 
 CREATE TABLE IF NOT EXISTS deployment_history(
   id SERIAL PRIMARY KEY,
@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS deployment_history(
   commit_msg TEXT NOT NULL,
   version VARCHAR NOT NULL,
   external_port integer[],
-  deployment_techstack INTEGER NOT NULL REFERENCES deployment_techstack(id) ON DELETE CASCADE,
+  deployment_techstack_id INTEGER NOT NULL REFERENCES deployment_techstack(id) ON DELETE CASCADE,
   build_command VARCHAR,
-  created_at TIMESTAMPTZ default now(),
+  is_active BOOL NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ default now()
 );

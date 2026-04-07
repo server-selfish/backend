@@ -1,8 +1,8 @@
 CREATE TABLE IF NOT EXISTS deployment_techstack(
   id SERIAL PRIMARY KEY,
-  name VARCHAR NOT NULL, --js, go, python
+  name VARCHAR NOT NULL,
   version VARCHAR NOT NULL
-)
+);
 
 CREATE TABLE IF NOT EXISTS deployment_history(
   id SERIAL PRIMARY KEY,
