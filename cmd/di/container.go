@@ -3,11 +3,13 @@ package di
 import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/server-selfish/backend/config/cache"
+	docker_client "github.com/server-selfish/backend/config/docker"
 	"github.com/server-selfish/backend/config/logger"
 	"github.com/server-selfish/backend/config/mq"
 	"github.com/server-selfish/backend/config/router"
 	"github.com/server-selfish/backend/config/storage"
 	"github.com/server-selfish/backend/internal/domain/handler"
+	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	project_repository "github.com/server-selfish/backend/internal/domain/repository/project"
 	"github.com/server-selfish/backend/internal/domain/service"
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
@@ -46,9 +48,12 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(storage.NewPostgresqlConn); err != nil {
 		panic("Failed to provide db connection: " + err.Error())
 	}
-	//  connection
+	//  valkey connection
 	if err := container.Provide(cache.NewValkeyConnection); err != nil {
 		panic("Failed to provide cache connection: " + err.Error())
+	}
+	if err := container.Provide(docker_client.NewDockerClient); err != nil {
+		panic("Failed to provide docker client: " + err.Error())
 	}
 
 	// you can add your own handler, service, repository,infra, or even
@@ -72,17 +77,26 @@ func BuildContainer() *dig.Container {
 
 	// repo
 	if err := container.Provide(project_repository.New); err != nil {
-		panic("Failed to provide Project repository: " + err.Error())
+		panic("Failed to provide project repository: " + err.Error())
+	}
+	if err := container.Provide(deployment_repository.New); err != nil {
+		panic("Failed to provide deployment repository: " + err.Error())
 	}
 
 	// service
 	if err := container.Provide(service.NewProjectService); err != nil {
 		panic("Failed to provide Project Service: " + err.Error())
 	}
+	if err := container.Provide(service.NewDeploymentService); err != nil {
+		panic("Failed to provide Deployment Service: " + err.Error())
+	}
 
 	// handler
 	if err := container.Provide(handler.NewProjectHandler); err != nil {
 		panic("Failed to provide Project Handler: " + err.Error())
+	}
+	if err := container.Provide(handler.NewDeploymentHandler); err != nil {
+		panic("Failed to provide Deployment Handler: " + err.Error())
 	}
 
 	// http server

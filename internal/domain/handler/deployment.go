@@ -1,10 +1,188 @@
 package handler
 
-type (
-	DeploymentHandler interface{}
-	deploymentHandler struct{}
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
+	"github.com/server-selfish/backend/internal/domain/schema"
+	"github.com/server-selfish/backend/internal/domain/service"
+	"github.com/server-selfish/backend/internal/pkg"
 )
 
-func NewDeploymentHandler() DeploymentHandler {
-	return &deploymentHandler{}
+type (
+	DeploymentHandler interface {
+		GetDeploymentsByProjectId(w http.ResponseWriter, r *http.Request)
+		GetDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
+		GetActiveDeploymenByDeploymentId(w http.ResponseWriter, r *http.Request)
+		GetHistoryDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
+		CreateDeployment(w http.ResponseWriter, r *http.Request)
+		CreateNewDeploymentVersionByDeploymentId(w http.ResponseWriter, r *http.Request)
+		DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
+	}
+	deploymentHandler struct {
+		ds service.DeploymentService
+	}
+)
+
+func NewDeploymentHandler(ds service.DeploymentService) DeploymentHandler {
+	return &deploymentHandler{
+		ds: ds,
+	}
+}
+
+// CreateNewDeploymentVersion implements [DeploymentHandler].
+func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	req, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentHistoryParams](w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	id, err := pkg.StringToPgUUID(req.DeploymentID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	if err := d.ds.CreateNewDeploymentVersionByDeploymentId(ctx, deployment_repository.CreateDeploymentHistoryParams{
+		DeploymentID:          id,
+		GitRemoteUrl:          req.GitRemoteUrl,
+		Branch:                req.Branch,
+		ExternalPort:          req.ExternalPort,
+		DeploymentTechstackID: req.DeploymentTechstackID,
+		BuildCommand:          pgtype.Text{String: req.BuildCommand},
+		BuildFolder:           pgtype.Text{String: req.BuildFolder},
+		RunCommand:            pgtype.Text{String: req.RunCommand},
+	}); err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "new version deployed", nil)
+}
+
+// CreateDeployment implements [DeploymentHandler].
+func (d *deploymentHandler) CreateDeployment(w http.ResponseWriter, r *http.Request) {
+	req, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentParams](w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	id, err := pkg.StringToPgUUID(req.ProjectID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	if err := d.ds.CreateDeployment(ctx, deployment_repository.CreateDeploymentParams{
+		Name:      req.Name,
+		ProjectID: id,
+	}); err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "deployment created", nil)
+}
+
+// DeleteDeploymentByDeploymentId implements [DeploymentHandler].
+func (d *deploymentHandler) DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	ctx := r.Context()
+	id, err := pkg.StringToPgUUID(idStr)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	if err := d.ds.DeleteDeploymentByDeploymentId(ctx, id); err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "deployment deleted", nil)
+}
+
+// GetHistoryDeploymentByDeploymentId implements [DeploymentHandler].
+func (d *deploymentHandler) GetHistoryDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	ctx := r.Context()
+	id, err := pkg.StringToPgUUID(idStr)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	deployments, err := d.ds.GetHistoryDeploymentByDeploymentId(ctx, id)
+	if err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", deployments)
+}
+
+// GetActiveDeploymenByDeploymentId implements [DeploymentHandler].
+func (d *deploymentHandler) GetActiveDeploymenByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	ctx := r.Context()
+	id, err := pkg.StringToPgUUID(idStr)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	deployment, err := d.ds.GetActiveDeploymentByDeploymentId(ctx, id)
+	if err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", deployment)
+}
+
+// GetDeploymentByDeploymentId implements [DeploymentHandler].
+func (d *deploymentHandler) GetDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	ctx := r.Context()
+	id, err := pkg.StringToPgUUID(idStr)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	deployment, err := d.ds.GetDeploymentByDeploymentId(ctx, id)
+	if err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", deployment)
+}
+
+// GetDeploymentsByProjectId implements [DeploymentHandler].
+func (d *deploymentHandler) GetDeploymentsByProjectId(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	projectId := q.Get("project_id")
+	if projectId == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	ctx := r.Context()
+	id, err := pkg.StringToPgUUID(projectId)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	deployments, err := d.ds.GetDeploymentsByProjectId(ctx, id)
+	if err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", deployments)
 }

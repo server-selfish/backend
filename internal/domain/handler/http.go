@@ -11,5 +11,11 @@ func RegisterProjectRoutes(r *chi.Mux, ph ProjectHandler) {
 }
 
 func RegisterDeploymentRoutes(r *chi.Mux, dh DeploymentHandler) {
-	// r.Post("/todo", th.AddNewTodo)
+	r.Get("/deployment", dh.GetDeploymentsByProjectId)
+	r.Get("/deployment/{id}", dh.GetDeploymentByDeploymentId)
+	r.Get("/deployment/active/{id}", dh.GetActiveDeploymenByDeploymentId)
+	r.Get("/deployment/history/{id}", dh.GetHistoryDeploymentByDeploymentId)
+	r.Post("/deployment", dh.CreateDeployment)
+	r.Post("/deployment/version", dh.CreateDeployment)
+	r.Delete("/deployment/{id}", dh.DeleteDeploymentByDeploymentId)
 }

@@ -32,6 +32,7 @@ func (s *Server) Run(ctx context.Context) {
 			mq *nats.Conn,
 			db *pgxpool.Pool,
 			ph handler.ProjectHandler,
+			dh handler.DeploymentHandler,
 			// and many other returned type provided
 			// in the container from /cmd/di/container.go
 		) {
@@ -48,7 +49,7 @@ func (s *Server) Run(ctx context.Context) {
 			// for the example and implementation, here is the example
 
 			handler.RegisterProjectRoutes(r, ph)
-
+			handler.RegisterDeploymentRoutes(r, dh)
 			srv := &http.Server{
 				Addr:              s.Address,
 				Handler:           r,

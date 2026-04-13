@@ -2,12 +2,17 @@ version: "2"
 sql:
   - engine: "postgresql"
     queries: "internal/domain/repository/project/project.sql"
-    schema: "internal/domain/repository/db_schema"
+    schema: "internal/domain/repository/db_schema/project.schema.sql"
     gen:
       go:
         package: "project_repository"
         out: "internal/domain/repository/project"
         sql_package: "pgx/v5"
+        overrides:
+          - db_type: "varchar"
+            go_type: "string"
+          - db_type: "text"
+            go_type: "string"
 
   - engine: "postgresql"
     queries: "internal/domain/repository/deployment/deployment.sql"
@@ -17,3 +22,8 @@ sql:
         package: "deployment_repository"
         out: "internal/domain/repository/deployment"
         sql_package: "pgx/v5"
+        overrides:
+          - db_type: "varchar"
+            go_type: "string"
+          - db_type: "text"
+            go_type: "string"
