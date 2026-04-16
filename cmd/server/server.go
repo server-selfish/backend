@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/moby/moby/client"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/handler"
@@ -33,10 +34,12 @@ func (s *Server) Run(ctx context.Context) {
 			db *pgxpool.Pool,
 			ph handler.ProjectHandler,
 			dh handler.DeploymentHandler,
+			dc *client.Client,
 			// and many other returned type provided
 			// in the container from /cmd/di/container.go
 		) {
 			defer cache.Close()
+			defer dc.Close()
 
 			defer func() {
 				if err := mq.Drain(); err != nil {
