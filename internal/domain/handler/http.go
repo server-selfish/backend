@@ -2,7 +2,18 @@ package handler
 
 import "github.com/go-chi/chi/v5"
 
-func RegisterProjectRoutes(r *chi.Mux, ph ProjectHandler) {
+func RegisterPublicAuthRoutes(r chi.Router, ah AuthHandler) {
+	r.Get("/auth/github/login", ah.GithubLogin)
+	r.Get("/auth/github/callback", ah.GithubCallback)
+	r.Post("/auth/refresh", ah.Refresh)
+}
+
+func RegisterProtectedAuthRoutes(r chi.Router, ah AuthHandler) {
+	r.Post("/auth/logout", ah.Logout)
+	r.Get("/auth/me", ah.Me)
+}
+
+func RegisterProjectRoutes(r chi.Router, ph ProjectHandler) {
 	r.Post("/project", ph.CreateProject)
 	r.Get("/project", ph.GetAllProjects)
 	r.Get("/project/{id}", ph.GetProjectById)
@@ -10,7 +21,7 @@ func RegisterProjectRoutes(r *chi.Mux, ph ProjectHandler) {
 	r.Delete("/project/{id}", ph.DeleteProjectById)
 }
 
-func RegisterDeploymentRoutes(r *chi.Mux, dh DeploymentHandler) {
+func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 	r.Get("/deployment", dh.GetDeploymentsByProjectId)
 	r.Get("/deployment/{id}", dh.GetDeploymentByDeploymentId)
 	r.Get("/deployment/active/{id}", dh.GetActiveDeploymenByDeploymentId)
