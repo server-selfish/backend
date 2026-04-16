@@ -27,3 +27,17 @@ sql:
             go_type: "string"
           - db_type: "text"
             go_type: "string"
+
+  - engine: "postgresql"
+    queries: "internal/domain/repository/container/container.sql"
+    schema: "internal/domain/repository/db_schema"
+    gen:
+      go:
+        package: "container_repository"
+        out: "internal/domain/repository/container"
+        sql_package: "pgx/v5"
+        overrides:
+          - db_type: "varchar"
+            go_type: "string"
+          - db_type: "text"
+            go_type: "string"
