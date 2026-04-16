@@ -12,6 +12,7 @@ import (
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	project_repository "github.com/server-selfish/backend/internal/domain/repository/project"
+	user_repository "github.com/server-selfish/backend/internal/domain/repository/user"
 	"github.com/server-selfish/backend/internal/domain/service"
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
 	mq_infra "github.com/server-selfish/backend/internal/infra/mq"
@@ -23,14 +24,11 @@ import (
 func BuildContainer() *dig.Container {
 	container := dig.New()
 
-	// here is your dependency injection using dig with order matter,
-	// but for the very first time, i will give you a default one.
-	// you can change this anytime
-
 	// logger
 	if err := container.Provide(logger.NewLogger); err != nil {
 		panic("Failed to provide logger: " + err.Error())
 	}
+
 	// object storage connection
 	if err := container.Provide(storage.NewRustfsConnection); err != nil {
 		panic("Failed to provide object storage connection: " + err.Error())
@@ -40,6 +38,7 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(mq.NewNatsConnection); err != nil {
 		panic("Failed to provide mq connection: " + err.Error())
 	}
+
 	// jetstream connection
 	if err := container.Provide(jetstream.New); err != nil {
 		panic("Failed to provide jetstream instance: " + err.Error())
@@ -49,16 +48,15 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(storage.NewPostgresqlConn); err != nil {
 		panic("Failed to provide db connection: " + err.Error())
 	}
-	//  valkey connection
+
+	// valkey connection
 	if err := container.Provide(cache.NewValkeyConnection); err != nil {
 		panic("Failed to provide cache connection: " + err.Error())
 	}
+
 	if err := container.Provide(docker_client.NewDockerClient); err != nil {
 		panic("Failed to provide docker client: " + err.Error())
 	}
-
-	// you can add your own handler, service, repository,infra, or even
-	// your own defined config here and invoke in the /cmd/server/http_server.go
 
 	// infra
 	if err := container.Provide(cache_infra.NewValkeyCache); err != nil {
@@ -76,7 +74,7 @@ func BuildContainer() *dig.Container {
 		panic("Failed to provide tx manager: " + err.Error())
 	}
 
-	// repo
+	// repositories
 	if err := container.Provide(project_repository.New); err != nil {
 		panic("Failed to provide project repository: " + err.Error())
 	}
@@ -86,26 +84,36 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(container_repository.New); err != nil {
 		panic("Failed to provide container repository: " + err.Error())
 	}
+	if err := container.Provide(user_repository.New); err != nil {
+		panic("Failed to provide user repository: " + err.Error())
+	}
 
-	// service
+	// services
 	if err := container.Provide(service.NewProjectService); err != nil {
 		panic("Failed to provide Project Service: " + err.Error())
 	}
 	if err := container.Provide(service.NewDeploymentService); err != nil {
 		panic("Failed to provide Deployment Service: " + err.Error())
 	}
+	if err := container.Provide(service.NewAuthService); err != nil {
+		panic("Failed to provide Auth Service: " + err.Error())
+	}
 
-	// handler
+	// handlers
 	if err := container.Provide(handler.NewProjectHandler); err != nil {
 		panic("Failed to provide Project Handler: " + err.Error())
 	}
 	if err := container.Provide(handler.NewDeploymentHandler); err != nil {
 		panic("Failed to provide Deployment Handler: " + err.Error())
 	}
+	if err := container.Provide(handler.NewAuthHandler); err != nil {
+		panic("Failed to provide Auth Handler: " + err.Error())
+	}
 
 	// http server
 	if err := container.Provide(router.NewHTTPChi); err != nil {
 		panic("Failed to provide http server: " + err.Error())
 	}
+
 	return container
 }
