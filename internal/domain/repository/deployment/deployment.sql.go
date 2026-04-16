@@ -26,9 +26,10 @@ func (q *Queries) CreateDeployment(ctx context.Context, arg CreateDeploymentPara
 	return err
 }
 
-const createDeploymentHistory = `-- name: CreateDeploymentHistory :exec
+const createDeploymentHistory = `-- name: CreateDeploymentHistory :one
 INSERT INTO public.deployment_history (deployment_id, git_remote_url, branch, commit_id, commit_msg, version, external_port, deployment_techstack_id, build_command, build_folder, run_command)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+RETURNING id
 `
 
 type CreateDeploymentHistoryParams struct {
@@ -45,8 +46,8 @@ type CreateDeploymentHistoryParams struct {
 	RunCommand            pgtype.Text
 }
 
-func (q *Queries) CreateDeploymentHistory(ctx context.Context, arg CreateDeploymentHistoryParams) error {
-	_, err := q.db.Exec(ctx, createDeploymentHistory,
+func (q *Queries) CreateDeploymentHistory(ctx context.Context, arg CreateDeploymentHistoryParams) (int32, error) {
+	row := q.db.QueryRow(ctx, createDeploymentHistory,
 		arg.DeploymentID,
 		arg.GitRemoteUrl,
 		arg.Branch,
@@ -59,7 +60,9 @@ func (q *Queries) CreateDeploymentHistory(ctx context.Context, arg CreateDeploym
 		arg.BuildFolder,
 		arg.RunCommand,
 	)
-	return err
+	var id int32
+	err := row.Scan(&id)
+	return id, err
 }
 
 const deleteDeploymentByDeploymentId = `-- name: DeleteDeploymentByDeploymentId :exec
@@ -124,29 +127,6 @@ func (q *Queries) GetActiveDeploymentHistoryByDeploymentId(ctx context.Context, 
 		&i.TechstackID,
 		&i.TechstackName,
 		&i.TechstackVersion,
-	)
-	return i, err
-}
-
-const getActiveDeploymentHistoryContainerByDeploymentId = `-- name: GetActiveDeploymentHistoryContainerByDeploymentId :one
-SELECT
-  c.id, c.name, c.deployment_history_id, c.created_at, c.updated_at
-FROM deployment_history dh
-JOIN container c
-  ON dh.id = c.deployment_history_id
-WHERE
-  dh.deployment_id = $1
-`
-
-func (q *Queries) GetActiveDeploymentHistoryContainerByDeploymentId(ctx context.Context, deploymentID pgtype.UUID) (Container, error) {
-	row := q.db.QueryRow(ctx, getActiveDeploymentHistoryContainerByDeploymentId, deploymentID)
-	var i Container
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.DeploymentHistoryID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -303,6 +283,29 @@ func (q *Queries) GetDeploymentsByProjectId(ctx context.Context, projectID pgtyp
 		return nil, err
 	}
 	return items, nil
+}
+
+const getProjectByDeploymentId = `-- name: GetProjectByDeploymentId :one
+SELECT
+  p.id, p.name, p.description, p.created_at, p.updated_at
+FROM deployment d
+JOIN project p
+  ON d.project_id = p.id
+WHERE
+  d.id = $1
+`
+
+func (q *Queries) GetProjectByDeploymentId(ctx context.Context, id pgtype.UUID) (Project, error) {
+	row := q.db.QueryRow(ctx, getProjectByDeploymentId, id)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getTechstackByTechstackId = `-- name: GetTechstackByTechstackId :one

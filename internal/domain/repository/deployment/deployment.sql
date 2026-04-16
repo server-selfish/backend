@@ -31,6 +31,15 @@ FROM deployment d
 WHERE
   d.id = $1;
 
+-- name: GetProjectByDeploymentId :one
+SELECT
+  p.*
+FROM deployment d
+JOIN project p
+  ON d.project_id = p.id
+WHERE
+  d.id = $1;
+
 -- name: GetDeploymentHistoryByDeploymentId :many
 SELECT
   id,
@@ -68,15 +77,6 @@ WHERE
   dh.deployment_id = $1 AND
   dh.is_active = true;
 
--- name: GetActiveDeploymentHistoryContainerByDeploymentId :one
-SELECT
-  c.*
-FROM deployment_history dh
-JOIN container c
-  ON dh.id = c.deployment_history_id
-WHERE
-  dh.deployment_id = $1;
-
 -- name: GetTechstackByTechstackId :one
 SELECT
   *
@@ -102,9 +102,10 @@ WHERE
 INSERT INTO public.deployment (name,project_id)
 VALUES ($1,$2);
 
--- name: CreateDeploymentHistory :exec
+-- name: CreateDeploymentHistory :one
 INSERT INTO public.deployment_history (deployment_id, git_remote_url, branch, commit_id, commit_msg, version, external_port, deployment_techstack_id, build_command, build_folder, run_command)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+RETURNING id;
 
 -- name: DeleteDeploymentByDeploymentId :exec
 DELETE FROM
