@@ -1,0 +1,23 @@
+# ---- Build Stage----
+FROM {{.DockerBaseImage}} as builder
+
+WORKDIR /app
+
+# Prevents Python from writing .pyc files
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+COPY . .
+
+# ---- Runtime stage ----
+FROM {{.DockerRuntimeImage}}
+
+WORKDIR /app
+
+COPY --from=builder /app /app
+COPY --from=builder /install /usr/local
+
+CMD {{.Command}}

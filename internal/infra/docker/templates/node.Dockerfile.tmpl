@@ -1,0 +1,37 @@
+# ---- Build stage ----
+FROM {{.DockerBaseImage}} AS builder
+
+WORKDIR /app
+
+COPY package.json ./
+COPY package-lock.json* yarn.lock* pnpm-lock.yaml* ./
+
+RUN \
+  if [ -f package-lock.json ]; then npm ci; \
+  elif [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
+  elif [ -f pnpm-lock.yaml ]; then npm install -g pnpm && pnpm install --frozen-lockfile; \
+  else echo "No lockfile found." && exit 1; \
+  fi
+
+COPY . .
+
+RUN {{.BuildCommand}}
+
+# ---- Runtime stage ----
+FROM {{.DockerRuntimeImage}}
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/package*.json ./
+RUN \
+  if [ -f package-lock.json ]; then npm ci --only=production; \
+  elif [ -f yarn.lock ]; then yarn install --production --frozen-lockfile; \
+  elif [ -f pnpm-lock.yaml ]; then npm install -g pnpm && pnpm install --prod --frozen-lockfile; \
+  else echo "No lockfile found." && exit 1; \
+  fi
+
+COPY --from=builder /app/dist ./{{.BuildFolder}}
+COPY --from=builder /app/public ./public
+
+CMD {{.Command}}
