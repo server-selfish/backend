@@ -9,6 +9,7 @@ import (
 	"github.com/server-selfish/backend/config/router"
 	"github.com/server-selfish/backend/config/storage"
 	"github.com/server-selfish/backend/internal/domain/handler"
+	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	project_repository "github.com/server-selfish/backend/internal/domain/repository/project"
 	"github.com/server-selfish/backend/internal/domain/service"
@@ -81,6 +82,9 @@ func BuildContainer() *dig.Container {
 	}
 	if err := container.Provide(deployment_repository.New); err != nil {
 		panic("Failed to provide deployment repository: " + err.Error())
+	}
+	if err := container.Provide(container_repository.New); err != nil {
+		panic("Failed to provide container repository: " + err.Error())
 	}
 
 	// service
