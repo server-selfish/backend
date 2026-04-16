@@ -1,5 +1,10 @@
 package schema
 
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
+)
+
 type (
 	CreateDeploymentParams struct {
 		Name      string `json:"name" validate:"required,min=1"`
@@ -17,6 +22,17 @@ type (
 		BuildCommand          string  `json:"build_command"`
 		BuildFolder           string  `json:"build_folder"`
 		RunCommand            string  `json:"run_command"`
+	}
+	BuildAndRunContainerParams struct {
+		DepQuery              *deployment_repository.Queries
+		Path                  string
+		BuildCommand          string
+		BuildFolder           string
+		DeploymentId          pgtype.UUID
+		ContainerName         string
+		ImageName             string
+		RunCommand            string
+		DeploymentTechstackID int32
 	}
 )
 type (
