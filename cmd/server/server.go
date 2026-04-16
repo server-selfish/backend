@@ -14,6 +14,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/handler"
+	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/valkey-io/valkey-go"
 	"go.uber.org/dig"
 )
@@ -28,15 +29,15 @@ func (s *Server) Run(ctx context.Context) {
 	err := s.Container.Invoke(
 		func(
 			logger zerolog.Logger,
-			r *chi.Mux,
+			r chi.Router,
 			cache valkey.Client,
 			mq *nats.Conn,
 			db *pgxpool.Pool,
 			ph handler.ProjectHandler,
 			dh handler.DeploymentHandler,
+			ah handler.AuthHandler,
+			as service.AuthService,
 			dc *client.Client,
-			// and many other returned type provided
-			// in the container from /cmd/di/container.go
 		) {
 			defer cache.Close()
 			defer dc.Close()
@@ -48,16 +49,24 @@ func (s *Server) Run(ctx context.Context) {
 			}()
 			defer db.Close()
 
-			// you can register your routes here
-			// for the example and implementation, here is the example
+			// Public auth routes
+			handler.RegisterPublicAuthRoutes(r, ah)
 
-			handler.RegisterProjectRoutes(r, ph)
-			handler.RegisterDeploymentRoutes(r, dh)
+			// Protected business routes
+			r.Group(func(pr chi.Router) {
+				pr.Use(handler.RequireAuth(as))
+
+				handler.RegisterProtectedAuthRoutes(pr, ah)
+				handler.RegisterProjectRoutes(pr, ph)
+				handler.RegisterDeploymentRoutes(pr, dh)
+			})
+
 			srv := &http.Server{
 				Addr:              s.Address,
 				Handler:           r,
 				ReadHeaderTimeout: 5 * time.Second,
 			}
+
 			go func() {
 				e := os.Getenv("ENV")
 				switch e {
@@ -91,15 +100,16 @@ func (s *Server) Run(ctx context.Context) {
 
 			logger.Info().Msg("Shutting down server...")
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			if err := srv.Shutdown(ctx); err != nil {
+			if err := srv.Shutdown(shutdownCtx); err != nil {
 				logger.Fatal().Err(err).Msg("HTTP Server forced to shutdown")
 			}
 
 			logger.Info().Msg("Server exiting...")
-		})
+		},
+	)
 	if err != nil {
 		log.Fatalf("failed to initialize application: %v", err)
 	}
