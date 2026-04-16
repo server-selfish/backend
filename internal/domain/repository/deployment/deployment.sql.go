@@ -310,7 +310,7 @@ func (q *Queries) GetProjectByDeploymentId(ctx context.Context, id pgtype.UUID) 
 
 const getTechstackByTechstackId = `-- name: GetTechstackByTechstackId :one
 SELECT
-  id, name, version, docker_base_image, docker_runtime_image
+  id, name, version, docker_base_image, docker_runtime_image, created_at, updated_at
 FROM deployment_techstack dt
 WHERE
   id = $1
@@ -325,6 +325,8 @@ func (q *Queries) GetTechstackByTechstackId(ctx context.Context, id int32) (Depl
 		&i.Version,
 		&i.DockerBaseImage,
 		&i.DockerRuntimeImage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
