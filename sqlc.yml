@@ -41,3 +41,17 @@ sql:
             go_type: "string"
           - db_type: "text"
             go_type: "string"
+
+  - engine: "postgresql"
+    queries: "internal/domain/repository/user/user.sql"
+    schema: "internal/domain/repository/db_schema/user.schema.sql"
+    gen:
+      go:
+        package: "user_repository"
+        out: "internal/domain/repository/user"
+        sql_package: "pgx/v5"
+        overrides:
+          - db_type: "varchar"
+            go_type: "string"
+          - db_type: "text"
+            go_type: "string"
