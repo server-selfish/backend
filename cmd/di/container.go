@@ -11,10 +11,12 @@ import (
 	"github.com/server-selfish/backend/internal/domain/handler"
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
+	github_app_repository "github.com/server-selfish/backend/internal/domain/repository/github_app"
 	project_repository "github.com/server-selfish/backend/internal/domain/repository/project"
 	user_repository "github.com/server-selfish/backend/internal/domain/repository/user"
 	"github.com/server-selfish/backend/internal/domain/service"
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
+	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	mq_infra "github.com/server-selfish/backend/internal/infra/mq"
 	storage_infra "github.com/server-selfish/backend/internal/infra/storage"
 	"github.com/server-selfish/backend/internal/pkg"
@@ -68,6 +70,9 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(storage_infra.NewRustfsInfra); err != nil {
 		panic("Failed to provide object storage infra: " + err.Error())
 	}
+	if err := container.Provide(github_infra.NewGithubInfra); err != nil {
+		panic("Failed to provide github infra: " + err.Error())
+	}
 
 	// utils
 	if err := container.Provide(pkg.NewTxManager); err != nil {
@@ -87,6 +92,9 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(user_repository.New); err != nil {
 		panic("Failed to provide user repository: " + err.Error())
 	}
+	if err := container.Provide(github_app_repository.New); err != nil {
+		panic("Failed to provide github app repository: " + err.Error())
+	}
 
 	// services
 	if err := container.Provide(service.NewProjectService); err != nil {
@@ -98,6 +106,9 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(service.NewAuthService); err != nil {
 		panic("Failed to provide Auth Service: " + err.Error())
 	}
+	if err := container.Provide(service.NewGithubAppService); err != nil {
+		panic("Failed to provide Github App Service: " + err.Error())
+	}
 
 	// handlers
 	if err := container.Provide(handler.NewProjectHandler); err != nil {
@@ -108,6 +119,9 @@ func BuildContainer() *dig.Container {
 	}
 	if err := container.Provide(handler.NewAuthHandler); err != nil {
 		panic("Failed to provide Auth Handler: " + err.Error())
+	}
+	if err := container.Provide(handler.NewGithubAppHandler); err != nil {
+		panic("Failed to provide Github App Handler: " + err.Error())
 	}
 
 	// http server
