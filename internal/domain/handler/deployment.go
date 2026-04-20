@@ -34,17 +34,29 @@ func NewDeploymentHandler(ds service.DeploymentService) DeploymentHandler {
 
 // CreateNewDeploymentVersion implements [DeploymentHandler].
 func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
+			Message: "unauthorized",
+		})
+		return
+	}
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
 	req, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentHistoryParams](w, r)
 	if !ok {
 		return
 	}
-	ctx := r.Context()
 	id, err := pkg.StringToPgUUID(req.DeploymentID)
 	if err != nil {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	if err := d.ds.CreateNewDeploymentVersionByDeploymentId(ctx, deployment_repository.CreateDeploymentHistoryParams{
+	if err := d.ds.CreateNewDeploymentVersionByDeploymentId(ctx, ui, deployment_repository.CreateDeploymentHistoryParams{
 		DeploymentID:          id,
 		GitRemoteUrl:          req.GitRemoteUrl,
 		Branch:                req.Branch,
@@ -84,18 +96,32 @@ func (d *deploymentHandler) CreateDeployment(w http.ResponseWriter, r *http.Requ
 
 // DeleteDeploymentByDeploymentId implements [DeploymentHandler].
 func (d *deploymentHandler) DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
+			Message: "unauthorized",
+		})
+		return
+	}
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	ctx := r.Context()
 	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	if err := d.ds.DeleteDeploymentByDeploymentId(ctx, id); err != nil {
+	if err := d.ds.DeleteDeploymentByDeploymentId(ctx, ui, id); err != nil {
 		pkg.ReturnError(w, err)
 		return
 	}
@@ -104,18 +130,31 @@ func (d *deploymentHandler) DeleteDeploymentByDeploymentId(w http.ResponseWriter
 
 // GetHistoryDeploymentByDeploymentId implements [DeploymentHandler].
 func (d *deploymentHandler) GetHistoryDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
+			Message: "unauthorized",
+		})
+		return
+	}
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	ctx := r.Context()
 	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	deployments, err := d.ds.GetHistoryDeploymentByDeploymentId(ctx, id)
+	deployments, err := d.ds.GetHistoryDeploymentByDeploymentId(ctx, ui, id)
 	if err != nil {
 		pkg.ReturnError(w, err)
 		return
@@ -125,18 +164,32 @@ func (d *deploymentHandler) GetHistoryDeploymentByDeploymentId(w http.ResponseWr
 
 // GetActiveDeploymenByDeploymentId implements [DeploymentHandler].
 func (d *deploymentHandler) GetActiveDeploymenByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
+			Message: "unauthorized",
+		})
+		return
+	}
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	ctx := r.Context()
 	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	deployment, err := d.ds.GetActiveDeploymentByDeploymentId(ctx, id)
+
+	deployment, err := d.ds.GetActiveDeploymentByDeploymentId(ctx, ui, id)
 	if err != nil {
 		pkg.ReturnError(w, err)
 		return
@@ -146,18 +199,32 @@ func (d *deploymentHandler) GetActiveDeploymenByDeploymentId(w http.ResponseWrit
 
 // GetDeploymentByDeploymentId implements [DeploymentHandler].
 func (d *deploymentHandler) GetDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	ctx := r.Context()
 	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	deployment, err := d.ds.GetDeploymentByDeploymentId(ctx, id)
+	deployment, err := d.ds.GetDeploymentByDeploymentId(ctx, ui, id)
 	if err != nil {
 		pkg.ReturnError(w, err)
 		return
@@ -167,19 +234,33 @@ func (d *deploymentHandler) GetDeploymentByDeploymentId(w http.ResponseWriter, r
 
 // GetDeploymentsByProjectId implements [DeploymentHandler].
 func (d *deploymentHandler) GetDeploymentsByProjectId(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+
 	q := r.URL.Query()
 	projectId := q.Get("project_id")
 	if projectId == "" {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	ctx := r.Context()
 	id, err := pkg.StringToPgUUID(projectId)
 	if err != nil {
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	deployments, err := d.ds.GetDeploymentsByProjectId(ctx, id)
+	deployments, err := d.ds.GetDeploymentsByProjectId(ctx, ui, id)
 	if err != nil {
 		pkg.ReturnError(w, err)
 		return
