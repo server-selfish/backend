@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS container_env(
   id SERIAL PRIMARY KEY,
+  container_id UUID NOT NULL REFERENCES container(id) ON DELETE CASCADE,
   key VARCHAR NOT NULL,
   value VARCHAR NOT NULL,
   created_at TIMESTAMPTZ default now(),
