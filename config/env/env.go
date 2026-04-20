@@ -2,7 +2,9 @@ package env
 
 import (
 	"os"
+	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -13,6 +15,7 @@ import (
 // or (which i don't suggest but working) inject the config.yaml in the Dockerfile.
 
 func Load() {
+	_ = godotenv.Load()
 	env := os.Getenv("ENV")
 	configName := "config.local"
 	configpath := "."
@@ -22,6 +25,9 @@ func Load() {
 	case "test":
 		configName = "config.test"
 	}
+
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	viper.SetConfigName(configName)
 	viper.SetConfigType("yaml")
