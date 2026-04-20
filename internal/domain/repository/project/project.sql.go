@@ -12,38 +12,48 @@ import (
 )
 
 const createProject = `-- name: CreateProject :exec
-INSERT INTO public.project (name,description)
-VALUES ($1,$2)
+INSERT INTO public.project (user_id,name,description)
+VALUES ($1,$2,$3)
 `
 
 type CreateProjectParams struct {
+	UserID      pgtype.UUID
 	Name        string
 	Description pgtype.Text
 }
 
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) error {
-	_, err := q.db.Exec(ctx, createProject, arg.Name, arg.Description)
+	_, err := q.db.Exec(ctx, createProject, arg.UserID, arg.Name, arg.Description)
 	return err
 }
 
 const deleteProjectById = `-- name: DeleteProjectById :exec
 DELETE FROM public.project
-where id = $1
+WHERE
+  id = $1
+  AND user_id = $2
 `
 
-func (q *Queries) DeleteProjectById(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteProjectById, id)
+type DeleteProjectByIdParams struct {
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
+func (q *Queries) DeleteProjectById(ctx context.Context, arg DeleteProjectByIdParams) error {
+	_, err := q.db.Exec(ctx, deleteProjectById, arg.ID, arg.UserID)
 	return err
 }
 
 const getAllProjects = `-- name: GetAllProjects :many
 SELECT
-  id, name, description, created_at, updated_at
+  id, user_id, name, description, created_at, updated_at
 FROM public.project p
+WHERE
+  p.user_id = $1
 `
 
-func (q *Queries) GetAllProjects(ctx context.Context) ([]Project, error) {
-	rows, err := q.db.Query(ctx, getAllProjects)
+func (q *Queries) GetAllProjects(ctx context.Context, userID pgtype.UUID) ([]Project, error) {
+	rows, err := q.db.Query(ctx, getAllProjects, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +63,7 @@ func (q *Queries) GetAllProjects(ctx context.Context) ([]Project, error) {
 		var i Project
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.Name,
 			&i.Description,
 			&i.CreatedAt,
@@ -70,18 +81,25 @@ func (q *Queries) GetAllProjects(ctx context.Context) ([]Project, error) {
 
 const getProjectById = `-- name: GetProjectById :one
 SELECT
-  id, name, description, created_at, updated_at
+  id, user_id, name, description, created_at, updated_at
 FROM
   public.project p
 WHERE
   p.id = $1
+  AND p.user_id = $2
 `
 
-func (q *Queries) GetProjectById(ctx context.Context, id pgtype.UUID) (Project, error) {
-	row := q.db.QueryRow(ctx, getProjectById, id)
+type GetProjectByIdParams struct {
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
+func (q *Queries) GetProjectById(ctx context.Context, arg GetProjectByIdParams) (Project, error) {
+	row := q.db.QueryRow(ctx, getProjectById, arg.ID, arg.UserID)
 	var i Project
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Name,
 		&i.Description,
 		&i.CreatedAt,
@@ -95,16 +113,24 @@ UPDATE public.project
 SET name = $1,
     description = $2,
     updated_at = now()
-WHERE id = $3
+WHERE
+  id = $3
+  AND user_id = $4
 `
 
 type UpdateProjectByIdParams struct {
 	Name        string
 	Description pgtype.Text
 	ID          pgtype.UUID
+	UserID      pgtype.UUID
 }
 
 func (q *Queries) UpdateProjectById(ctx context.Context, arg UpdateProjectByIdParams) error {
-	_, err := q.db.Exec(ctx, updateProjectById, arg.Name, arg.Description, arg.ID)
+	_, err := q.db.Exec(ctx, updateProjectById,
+		arg.Name,
+		arg.Description,
+		arg.ID,
+		arg.UserID,
+	)
 	return err
 }

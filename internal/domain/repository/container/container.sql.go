@@ -32,12 +32,22 @@ SELECT
 FROM container c
 JOIN deployment_history dh
   ON dh.id = c.deployment_history_id
+JOIN deployment d
+  ON dh.deployment_id = d.id
+JOIN project p
+  ON d.project_id = p.id
 WHERE
-  dh.deployment_id = $1
+  p.user_id = $1
+  AND dh.deployment_id = $2
 `
 
-func (q *Queries) GetActiveDeploymentHistoryContainerByDeploymentId(ctx context.Context, deploymentID pgtype.UUID) (Container, error) {
-	row := q.db.QueryRow(ctx, getActiveDeploymentHistoryContainerByDeploymentId, deploymentID)
+type GetActiveDeploymentHistoryContainerByDeploymentIdParams struct {
+	UserID       pgtype.UUID
+	DeploymentID pgtype.UUID
+}
+
+func (q *Queries) GetActiveDeploymentHistoryContainerByDeploymentId(ctx context.Context, arg GetActiveDeploymentHistoryContainerByDeploymentIdParams) (Container, error) {
+	row := q.db.QueryRow(ctx, getActiveDeploymentHistoryContainerByDeploymentId, arg.UserID, arg.DeploymentID)
 	var i Container
 	err := row.Scan(
 		&i.ID,

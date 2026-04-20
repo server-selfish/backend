@@ -14,6 +14,8 @@ SELECT
   dh.updated_at AS updated_at
 FROM
   deployment d
+JOIN project p
+  ON p.id = d.project_id
 LEFT JOIN deployment_history dh
   ON d.id = dh.deployment_id
 JOIN deployment_techstack dt
@@ -21,15 +23,19 @@ JOIN deployment_techstack dt
 LEFT JOIN container c
   ON c.deployment_history_id = dh.id
 WHERE
-  d.project_id = $1 AND
-  dh.is_active = true;
+  p.user_id = $1
+  AND d.project_id = $2
+  AND dh.is_active = true;
 
 -- name: GetDeploymentByDeploymentId :one
 SELECT
-  *
+  d.*
 FROM deployment d
+JOIN project p
+  ON p.id = d.project_id
 WHERE
-  d.id = $1;
+  p.user_id = $1
+  AND d.id = $2;
 
 -- name: GetProjectByDeploymentId :one
 SELECT
@@ -38,21 +44,27 @@ FROM deployment d
 JOIN project p
   ON d.project_id = p.id
 WHERE
-  d.id = $1;
+  p.user_id = $1
+  AND d.id = $2;
 
 -- name: GetDeploymentHistoryByDeploymentId :many
 SELECT
-  id,
-  branch,
-  commit_id,
-  commit_msg AS commit_message,
-  version AS deployment_version,
-  external_port AS port,
-  created_at,
-  updated_at
+  dh.id,
+  dh.branch,
+  dh.commit_id,
+  dh.commit_msg AS commit_message,
+  dh.version AS deployment_version,
+  dh.external_port AS port,
+  dh.created_at,
+  dh.updated_at
 FROM deployment_history dh
+JOIN deployment d
+  ON dh.deployment_id = d.id
+JOIN project p
+  ON d.project_id = p.id
 WHERE
-  dh.deployment_id = $1 AND
+  p.user_id = $1 AND
+  dh.deployment_id = $2 AND
   dh.is_active = false
 ORDER BY
   COALESCE(dh.updated_at, dh.created_at) DESC;
@@ -71,11 +83,16 @@ SELECT
   dt.name AS techstack_name,
   dt.version AS techstack_version
 FROM deployment_history dh
+JOIN deployment d
+  ON dh.deployment_id = d.id
+JOIN project p
+  ON d.project_id = p.id
 JOIN deployment_techstack dt
   ON dh.deployment_techstack_id = dt.id
 WHERE
-  dh.deployment_id = $1 AND
-  dh.is_active = true;
+  p.user_id = $1
+  AND dh.deployment_id = $2
+  AND dh.is_active = true;
 
 -- name: GetTechstackByTechstackId :one
 SELECT
@@ -87,16 +104,26 @@ WHERE
 -- name: SetActiveDeploymentHistoryNonActiveByDeploymentId :exec
 UPDATE deployment_history dh
 SET is_active = false
+FROM deployment d
+JOIN project p
+  ON p.id = d.project_id
 WHERE
-  dh.deployment_id = $1 AND
-  dh.is_active = true;
+  d.id = dh.deployment_id
+  AND p.user_id = $1
+  AND dh.deployment_id = $2
+  AND dh.is_active = true;
 
 -- name: SetNonActiveDeploymentHistoryActiveByDeploymentHistoryId :exec
 UPDATE deployment_history dh
 SET is_active = true
+FROM deployment d
+JOIN project p
+  ON p.id = d.project_id
 WHERE
-  dh.id = $1 AND
-  dh.is_active = false;
+  d.id = dh.deployment_id
+  AND p.user_id = $1
+  AND dh.id = $2
+  AND dh.is_active = false;
 
 -- name: CreateDeployment :exec
 INSERT INTO public.deployment (name,project_id)
@@ -110,5 +137,8 @@ RETURNING id;
 -- name: DeleteDeploymentByDeploymentId :exec
 DELETE FROM
   deployment d
+USING project p
 WHERE
-  d.id = $1;
+  p.id = d.project_id
+  AND p.user_id = $1
+  AND d.id = $2;

@@ -68,12 +68,20 @@ func (q *Queries) CreateDeploymentHistory(ctx context.Context, arg CreateDeploym
 const deleteDeploymentByDeploymentId = `-- name: DeleteDeploymentByDeploymentId :exec
 DELETE FROM
   deployment d
+USING project p
 WHERE
-  d.id = $1
+  p.id = d.project_id
+  AND p.user_id = $1
+  AND d.id = $2
 `
 
-func (q *Queries) DeleteDeploymentByDeploymentId(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteDeploymentByDeploymentId, id)
+type DeleteDeploymentByDeploymentIdParams struct {
+	UserID pgtype.UUID
+	ID     pgtype.UUID
+}
+
+func (q *Queries) DeleteDeploymentByDeploymentId(ctx context.Context, arg DeleteDeploymentByDeploymentIdParams) error {
+	_, err := q.db.Exec(ctx, deleteDeploymentByDeploymentId, arg.UserID, arg.ID)
 	return err
 }
 
@@ -91,12 +99,22 @@ SELECT
   dt.name AS techstack_name,
   dt.version AS techstack_version
 FROM deployment_history dh
+JOIN deployment d
+  ON dh.deployment_id = d.id
+JOIN project p
+  ON d.project_id = p.id
 JOIN deployment_techstack dt
   ON dh.deployment_techstack_id = dt.id
 WHERE
-  dh.deployment_id = $1 AND
-  dh.is_active = true
+  p.user_id = $1
+  AND dh.deployment_id = $2
+  AND dh.is_active = true
 `
+
+type GetActiveDeploymentHistoryByDeploymentIdParams struct {
+	UserID       pgtype.UUID
+	DeploymentID pgtype.UUID
+}
 
 type GetActiveDeploymentHistoryByDeploymentIdRow struct {
 	DeploymentHistoryID int32
@@ -112,8 +130,8 @@ type GetActiveDeploymentHistoryByDeploymentIdRow struct {
 	TechstackVersion    string
 }
 
-func (q *Queries) GetActiveDeploymentHistoryByDeploymentId(ctx context.Context, deploymentID pgtype.UUID) (GetActiveDeploymentHistoryByDeploymentIdRow, error) {
-	row := q.db.QueryRow(ctx, getActiveDeploymentHistoryByDeploymentId, deploymentID)
+func (q *Queries) GetActiveDeploymentHistoryByDeploymentId(ctx context.Context, arg GetActiveDeploymentHistoryByDeploymentIdParams) (GetActiveDeploymentHistoryByDeploymentIdRow, error) {
+	row := q.db.QueryRow(ctx, getActiveDeploymentHistoryByDeploymentId, arg.UserID, arg.DeploymentID)
 	var i GetActiveDeploymentHistoryByDeploymentIdRow
 	err := row.Scan(
 		&i.DeploymentHistoryID,
@@ -133,14 +151,22 @@ func (q *Queries) GetActiveDeploymentHistoryByDeploymentId(ctx context.Context, 
 
 const getDeploymentByDeploymentId = `-- name: GetDeploymentByDeploymentId :one
 SELECT
-  id, name, project_id, created_at, updated_at
+  d.id, d.name, d.project_id, d.created_at, d.updated_at
 FROM deployment d
+JOIN project p
+  ON p.id = d.project_id
 WHERE
-  d.id = $1
+  p.user_id = $1
+  AND d.id = $2
 `
 
-func (q *Queries) GetDeploymentByDeploymentId(ctx context.Context, id pgtype.UUID) (Deployment, error) {
-	row := q.db.QueryRow(ctx, getDeploymentByDeploymentId, id)
+type GetDeploymentByDeploymentIdParams struct {
+	UserID pgtype.UUID
+	ID     pgtype.UUID
+}
+
+func (q *Queries) GetDeploymentByDeploymentId(ctx context.Context, arg GetDeploymentByDeploymentIdParams) (Deployment, error) {
+	row := q.db.QueryRow(ctx, getDeploymentByDeploymentId, arg.UserID, arg.ID)
 	var i Deployment
 	err := row.Scan(
 		&i.ID,
@@ -154,21 +180,31 @@ func (q *Queries) GetDeploymentByDeploymentId(ctx context.Context, id pgtype.UUI
 
 const getDeploymentHistoryByDeploymentId = `-- name: GetDeploymentHistoryByDeploymentId :many
 SELECT
-  id,
-  branch,
-  commit_id,
-  commit_msg AS commit_message,
-  version AS deployment_version,
-  external_port AS port,
-  created_at,
-  updated_at
+  dh.id,
+  dh.branch,
+  dh.commit_id,
+  dh.commit_msg AS commit_message,
+  dh.version AS deployment_version,
+  dh.external_port AS port,
+  dh.created_at,
+  dh.updated_at
 FROM deployment_history dh
+JOIN deployment d
+  ON dh.deployment_id = d.id
+JOIN project p
+  ON d.project_id = p.id
 WHERE
-  dh.deployment_id = $1 AND
+  p.user_id = $1 AND
+  dh.deployment_id = $2 AND
   dh.is_active = false
 ORDER BY
   COALESCE(dh.updated_at, dh.created_at) DESC
 `
+
+type GetDeploymentHistoryByDeploymentIdParams struct {
+	UserID       pgtype.UUID
+	DeploymentID pgtype.UUID
+}
 
 type GetDeploymentHistoryByDeploymentIdRow struct {
 	ID                int32
@@ -181,8 +217,8 @@ type GetDeploymentHistoryByDeploymentIdRow struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
-func (q *Queries) GetDeploymentHistoryByDeploymentId(ctx context.Context, deploymentID pgtype.UUID) ([]GetDeploymentHistoryByDeploymentIdRow, error) {
-	rows, err := q.db.Query(ctx, getDeploymentHistoryByDeploymentId, deploymentID)
+func (q *Queries) GetDeploymentHistoryByDeploymentId(ctx context.Context, arg GetDeploymentHistoryByDeploymentIdParams) ([]GetDeploymentHistoryByDeploymentIdRow, error) {
+	rows, err := q.db.Query(ctx, getDeploymentHistoryByDeploymentId, arg.UserID, arg.DeploymentID)
 	if err != nil {
 		return nil, err
 	}
@@ -226,6 +262,8 @@ SELECT
   dh.updated_at AS updated_at
 FROM
   deployment d
+JOIN project p
+  ON p.id = d.project_id
 LEFT JOIN deployment_history dh
   ON d.id = dh.deployment_id
 JOIN deployment_techstack dt
@@ -233,9 +271,15 @@ JOIN deployment_techstack dt
 LEFT JOIN container c
   ON c.deployment_history_id = dh.id
 WHERE
-  d.project_id = $1 AND
-  dh.is_active = true
+  p.user_id = $1
+  AND d.project_id = $2
+  AND dh.is_active = true
 `
+
+type GetDeploymentsByProjectIdParams struct {
+	UserID    pgtype.UUID
+	ProjectID pgtype.UUID
+}
 
 type GetDeploymentsByProjectIdRow struct {
 	DeploymentID      string
@@ -252,8 +296,8 @@ type GetDeploymentsByProjectIdRow struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
-func (q *Queries) GetDeploymentsByProjectId(ctx context.Context, projectID pgtype.UUID) ([]GetDeploymentsByProjectIdRow, error) {
-	rows, err := q.db.Query(ctx, getDeploymentsByProjectId, projectID)
+func (q *Queries) GetDeploymentsByProjectId(ctx context.Context, arg GetDeploymentsByProjectIdParams) ([]GetDeploymentsByProjectIdRow, error) {
+	rows, err := q.db.Query(ctx, getDeploymentsByProjectId, arg.UserID, arg.ProjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,19 +331,26 @@ func (q *Queries) GetDeploymentsByProjectId(ctx context.Context, projectID pgtyp
 
 const getProjectByDeploymentId = `-- name: GetProjectByDeploymentId :one
 SELECT
-  p.id, p.name, p.description, p.created_at, p.updated_at
+  p.id, p.user_id, p.name, p.description, p.created_at, p.updated_at
 FROM deployment d
 JOIN project p
   ON d.project_id = p.id
 WHERE
-  d.id = $1
+  p.user_id = $1
+  AND d.id = $2
 `
 
-func (q *Queries) GetProjectByDeploymentId(ctx context.Context, id pgtype.UUID) (Project, error) {
-	row := q.db.QueryRow(ctx, getProjectByDeploymentId, id)
+type GetProjectByDeploymentIdParams struct {
+	UserID pgtype.UUID
+	ID     pgtype.UUID
+}
+
+func (q *Queries) GetProjectByDeploymentId(ctx context.Context, arg GetProjectByDeploymentIdParams) (Project, error) {
+	row := q.db.QueryRow(ctx, getProjectByDeploymentId, arg.UserID, arg.ID)
 	var i Project
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Name,
 		&i.Description,
 		&i.CreatedAt,
@@ -334,25 +385,45 @@ func (q *Queries) GetTechstackByTechstackId(ctx context.Context, id int32) (Depl
 const setActiveDeploymentHistoryNonActiveByDeploymentId = `-- name: SetActiveDeploymentHistoryNonActiveByDeploymentId :exec
 UPDATE deployment_history dh
 SET is_active = false
+FROM deployment d
+JOIN project p
+  ON p.id = d.project_id
 WHERE
-  dh.deployment_id = $1 AND
-  dh.is_active = true
+  d.id = dh.deployment_id
+  AND p.user_id = $1
+  AND dh.deployment_id = $2
+  AND dh.is_active = true
 `
 
-func (q *Queries) SetActiveDeploymentHistoryNonActiveByDeploymentId(ctx context.Context, deploymentID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, setActiveDeploymentHistoryNonActiveByDeploymentId, deploymentID)
+type SetActiveDeploymentHistoryNonActiveByDeploymentIdParams struct {
+	UserID       pgtype.UUID
+	DeploymentID pgtype.UUID
+}
+
+func (q *Queries) SetActiveDeploymentHistoryNonActiveByDeploymentId(ctx context.Context, arg SetActiveDeploymentHistoryNonActiveByDeploymentIdParams) error {
+	_, err := q.db.Exec(ctx, setActiveDeploymentHistoryNonActiveByDeploymentId, arg.UserID, arg.DeploymentID)
 	return err
 }
 
 const setNonActiveDeploymentHistoryActiveByDeploymentHistoryId = `-- name: SetNonActiveDeploymentHistoryActiveByDeploymentHistoryId :exec
 UPDATE deployment_history dh
 SET is_active = true
+FROM deployment d
+JOIN project p
+  ON p.id = d.project_id
 WHERE
-  dh.id = $1 AND
-  dh.is_active = false
+  d.id = dh.deployment_id
+  AND p.user_id = $1
+  AND dh.id = $2
+  AND dh.is_active = false
 `
 
-func (q *Queries) SetNonActiveDeploymentHistoryActiveByDeploymentHistoryId(ctx context.Context, id int32) error {
-	_, err := q.db.Exec(ctx, setNonActiveDeploymentHistoryActiveByDeploymentHistoryId, id)
+type SetNonActiveDeploymentHistoryActiveByDeploymentHistoryIdParams struct {
+	UserID pgtype.UUID
+	ID     int32
+}
+
+func (q *Queries) SetNonActiveDeploymentHistoryActiveByDeploymentHistoryId(ctx context.Context, arg SetNonActiveDeploymentHistoryActiveByDeploymentHistoryIdParams) error {
+	_, err := q.db.Exec(ctx, setNonActiveDeploymentHistoryActiveByDeploymentHistoryId, arg.UserID, arg.ID)
 	return err
 }
