@@ -8,18 +8,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type AuthSession struct {
-	ID               pgtype.UUID
-	UserID           pgtype.UUID
-	RefreshTokenHash string
-	ExpiresAt        pgtype.Timestamptz
-	RevokedAt        pgtype.Timestamptz
-	UserAgent        pgtype.Text
-	IpAddress        pgtype.Text
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-}
-
 type Container struct {
 	ID                  pgtype.UUID
 	Name                string
@@ -29,11 +17,12 @@ type Container struct {
 }
 
 type ContainerEnv struct {
-	ID        int32
-	Key       string
-	Value     string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID          int32
+	ContainerID pgtype.UUID
+	Key         string
+	Value       string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }
 
 type Deployment struct {
@@ -62,31 +51,11 @@ type DeploymentHistory struct {
 	UpdatedAt             pgtype.Timestamptz
 }
 
-type DeploymentTechstack struct {
-	ID                 int32
-	Name               string
-	Version            string
-	DockerBaseImage    string
-	DockerRuntimeImage string
-	CreatedAt          pgtype.Timestamptz
-	UpdatedAt          pgtype.Timestamptz
-}
-
 type Project struct {
 	ID          pgtype.UUID
+	UserID      pgtype.UUID
 	Name        string
 	Description pgtype.Text
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
-}
-
-type User struct {
-	ID             pgtype.UUID
-	Provider       string
-	ProviderUserID int64
-	Username       string
-	Email          pgtype.Text
-	AvatarUrl      pgtype.Text
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
 }

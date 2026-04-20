@@ -10,8 +10,20 @@ import (
 
 type Project struct {
 	ID          pgtype.UUID
+	UserID      pgtype.UUID
 	Name        string
 	Description pgtype.Text
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+}
+
+type User struct {
+	ID             pgtype.UUID
+	Provider       string
+	ProviderUserID int64
+	Username       string
+	Email          pgtype.Text
+	AvatarUrl      pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
