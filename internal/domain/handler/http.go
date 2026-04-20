@@ -13,6 +13,16 @@ func RegisterProtectedAuthRoutes(r chi.Router, ah AuthHandler) {
 	r.Get("/auth/me", ah.Me)
 }
 
+func RegisterPublicGithubAppRoutes(r chi.Router, gah GithubAppHandler) {
+	r.Get("/github-app/callback", gah.Callback)
+}
+
+func RegisterProtectedGithubAppRoutes(r chi.Router, gah GithubAppHandler) {
+	r.Get("/github-app/install", gah.Install)
+	r.Get("/github-app/installations", gah.ListInstallations)
+	r.Get("/github-app/installations/{id}/repos", gah.ListInstallationRepositories)
+}
+
 func RegisterProjectRoutes(r chi.Router, ph ProjectHandler) {
 	r.Post("/project", ph.CreateProject)
 	r.Get("/project", ph.GetAllProjects)

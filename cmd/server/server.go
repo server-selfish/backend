@@ -36,6 +36,7 @@ func (s *Server) Run(ctx context.Context) {
 			ph handler.ProjectHandler,
 			dh handler.DeploymentHandler,
 			ah handler.AuthHandler,
+			ghah handler.GithubAppHandler,
 			as service.AuthService,
 			dc *client.Client,
 		) {
@@ -51,12 +52,14 @@ func (s *Server) Run(ctx context.Context) {
 
 			// Public auth routes
 			handler.RegisterPublicAuthRoutes(r, ah)
+			handler.RegisterPublicGithubAppRoutes(r, ghah)
 
 			// Protected business routes
 			r.Group(func(pr chi.Router) {
 				pr.Use(handler.RequireAuth(as))
 
 				handler.RegisterProtectedAuthRoutes(pr, ah)
+				handler.RegisterProtectedGithubAppRoutes(pr, ghah)
 				handler.RegisterProjectRoutes(pr, ph)
 				handler.RegisterDeploymentRoutes(pr, dh)
 			})
