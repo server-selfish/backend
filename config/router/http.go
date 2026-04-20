@@ -17,12 +17,12 @@ func NewHTTPChi() chi.Router {
 		r.Use(middleware.Logger)
 	}
 
-	allowOrigins := viper.GetString("server.cors.allow_origins")
-	allowMethods := viper.GetString("server.cors.allow_methods")
-	allowHeaders := viper.GetString("server.cors.allow_headers")
-	exposeHeaders := viper.GetString("server.cors.expose_headers")
-	allowCredentials := viper.GetBool("server.cors.allow_credential")
-	maxAge := viper.GetInt("server.cors.max_age")
+	allowOrigins := viper.GetString("server.cors.allow.origins")
+	allowMethods := viper.GetString("server.cors.allow.methods")
+	allowHeaders := viper.GetString("server.cors.allow.headers")
+	exposeHeaders := viper.GetString("server.cors.expose.headers")
+	allowCredentials := viper.GetBool("server.cors.allow.credential")
+	maxAge := viper.GetInt("server.cors.max.age")
 
 	r.Use(cors.New(cors.Options{
 		AllowedOrigins:   strings.Split(allowOrigins, ","),
