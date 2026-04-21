@@ -1,7 +1,9 @@
 CREATE TABLE IF NOT EXISTS deployment(
 	id UUID PRIMARY KEY DEFAULT uuidv7(),
   name VARCHAR NOT NULL,
+  git_remote_url VARCHAR NOT NULL,
   project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+  installation_id BIGINT NOT NULL REFERENCES github_installations(installation_id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ,
   CONSTRAINT deployment_project_name_unique UNIQUE (project_id, name)
@@ -20,7 +22,6 @@ CREATE TABLE IF NOT EXISTS deployment_techstack(
 CREATE TABLE IF NOT EXISTS deployment_history(
   id SERIAL PRIMARY KEY,
   deployment_id UUID NOT NULL REFERENCES deployment(id) ON DELETE CASCADE,
-  git_remote_url VARCHAR NOT NULL,
   branch VARCHAR NOT NULL,
   commit_id VARCHAR NOT NULL,
   commit_msg TEXT NOT NULL,
