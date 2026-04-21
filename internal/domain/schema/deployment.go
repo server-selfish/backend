@@ -29,6 +29,7 @@ type (
 		BuildCommand          string
 		BuildFolder           string
 		DeploymentId          pgtype.UUID
+		UserId                pgtype.UUID
 		ContainerName         string
 		ImageName             string
 		RunCommand            string
