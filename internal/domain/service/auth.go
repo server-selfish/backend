@@ -61,9 +61,9 @@ func NewAuthService(ur *user_repository.Queries) (AuthService, error) {
 		return nil, err
 	}
 
-	clientID := viper.GetString("auth.github.client_id")
-	clientSecret := viper.GetString("auth.github.client_secret")
-	redirectURI := viper.GetString("auth.github.redirect_uri")
+	clientID := viper.GetString("auth.github.client.id")
+	clientSecret := viper.GetString("auth.github.client.secret")
+	redirectURI := fmt.Sprintf("%s/auth/github/callback", viper.GetString("app.base.url"))
 	if clientID == "" || clientSecret == "" || redirectURI == "" {
 		return nil, errors.New("github oauth configuration is incomplete")
 	}
