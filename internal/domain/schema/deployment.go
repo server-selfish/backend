@@ -7,21 +7,20 @@ import (
 
 type (
 	CreateDeploymentParams struct {
-		Name      string `json:"name" validate:"required,min=1"`
-		ProjectID string `json:"project_id" validate:"required,min=1"`
+		Name           string `json:"name" validate:"required,min=1"`
+		ProjectID      string `json:"project_id" validate:"required,min=1"`
+		InstallationID int64  `json:"installation_id" validate:"required"`
+		GitRemoteUrl   string `json:"git_remote_url" validate:"required,min=1"`
 	}
 	CreateDeploymentHistoryParams struct {
-		DeploymentID string `json:"deployment_id" validate:"required,min=1"`
-		GitRemoteUrl string `json:"git_remote_url" validate:"required,min=1"`
-		Branch       string `json:"branch" validate:"required,min=1"`
-		// CommitID              string  `json:"commit_id" validate:"required,min=1"`
-		// CommitMsg             string  `json:"commit_message" validate:"required,min=1"`
-		// Version               string  `json:"version" validate:"required,min=1"`
+		DeploymentID          string  `json:"deployment_id" validate:"required,min=1"`
+		Branch                string  `json:"branch" validate:"required,min=1"`
 		ExternalPort          []int32 `json:"port"`
 		DeploymentTechstackID int32   `json:"techstack_id" validate:"required"`
 		BuildCommand          string  `json:"build_command"`
 		BuildFolder           string  `json:"build_folder"`
 		RunCommand            string  `json:"run_command"`
+		InstallationID        string  `json:"installation_id" validate:"required,min=1"`
 	}
 	BuildAndRunContainerParams struct {
 		DepQuery              *deployment_repository.Queries
@@ -39,6 +38,7 @@ type (
 type (
 	GetDeploymentData struct {
 		DeploymentID      string  `json:"deployment_id"`
+		GitRemoteUrl      string  `json:"git_remote_url"`
 		DeploymentName    string  `json:"deployment_name"`
 		Branch            string  `json:"branch"`
 		CommitID          string  `json:"commit_id"`
@@ -52,14 +52,14 @@ type (
 		UpdatedAt         string  `json:"updated_at"`
 	}
 	GetSingleDeploymentData struct {
-		ID        string `json:"id"`
-		Name      string `json:"name"`
-		CreatedAt string `json:"created_at"`
-		UpdatedAt string `json:"updated_at"`
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		GitRemoteURL string `json:"git_remote_url"`
+		CreatedAt    string `json:"created_at"`
+		UpdatedAt    string `json:"updated_at"`
 	}
 	GetActiveDeploymentHistory struct {
 		DeploymentHistoryID int32   `json:"deployment_history_id"`
-		GitRemoteURL        string  `json:"git_remote_url"`
 		Branch              string  `json:"branch"`
 		CommitId            string  `json:"commit_id"`
 		CommitMessage       string  `json:"commit_message"`

@@ -2,6 +2,7 @@
 SELECT
   CAST (d.id AS VARCHAR) AS deployment_id,
   d.name AS deployment_name,
+  d.git_remote_url as git_remote_url,
   CAST (dh.branch AS VARCHAR) AS branch,
   CAST (dh.commit_id AS VARCHAR) AS commit_id,
   CAST (dh.commit_msg AS VARCHAR) AS commit_message,
@@ -72,7 +73,6 @@ ORDER BY
 -- name: GetActiveDeploymentHistoryByDeploymentId :one
 SELECT
   dh.id AS deployment_history_id,
-  dh.git_remote_url AS git_remote_url,
   dh.branch AS branch,
   dh.commit_id AS commit_id,
   dh.commit_msg AS commit_message,
@@ -126,12 +126,12 @@ WHERE
   AND dh.is_active = false;
 
 -- name: CreateDeployment :exec
-INSERT INTO public.deployment (name,project_id)
-VALUES ($1,$2);
+INSERT INTO public.deployment (name,git_remote_url,project_id,installation_id)
+VALUES ($1,$2,$3,$4);
 
 -- name: CreateDeploymentHistory :one
-INSERT INTO public.deployment_history (deployment_id, git_remote_url, branch, commit_id, commit_msg, version, external_port, deployment_techstack_id, build_command, build_folder, run_command)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+INSERT INTO public.deployment_history (deployment_id, branch, commit_id, commit_msg, version, external_port, deployment_techstack_id, build_command, build_folder, run_command)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 RETURNING id;
 
 -- name: DeleteDeploymentByDeploymentId :exec
