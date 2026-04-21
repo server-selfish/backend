@@ -26,17 +26,18 @@ type ContainerEnv struct {
 }
 
 type Deployment struct {
-	ID        pgtype.UUID
-	Name      string
-	ProjectID pgtype.UUID
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID             pgtype.UUID
+	Name           string
+	GitRemoteUrl   string
+	ProjectID      pgtype.UUID
+	InstallationID int64
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type DeploymentHistory struct {
 	ID                    int32
 	DeploymentID          pgtype.UUID
-	GitRemoteUrl          string
 	Branch                string
 	CommitID              string
 	CommitMsg             string
