@@ -16,7 +16,7 @@ sql:
 
   - engine: "postgresql"
     queries: "internal/domain/repository/deployment/deployment.sql"
-    schema: "internal/domain/repository/db_schema"
+    schema: "internal/domain/repository/db_schema/deployment.schema.sql"
     gen:
       go:
         package: "deployment_repository"
@@ -30,7 +30,7 @@ sql:
 
   - engine: "postgresql"
     queries: "internal/domain/repository/container/container.sql"
-    schema: "internal/domain/repository/db_schema"
+    schema: "internal/domain/repository/db_schema/container.schema.sql"
     gen:
       go:
         package: "container_repository"
@@ -49,6 +49,20 @@ sql:
       go:
         package: "user_repository"
         out: "internal/domain/repository/user"
+        sql_package: "pgx/v5"
+        overrides:
+          - db_type: "varchar"
+            go_type: "string"
+          - db_type: "text"
+            go_type: "string"
+
+  - engine: "postgresql"
+    queries: "internal/domain/repository/github_app/github_app.sql"
+    schema: "internal/domain/repository/db_schema/github_app.schema.sql"
+    gen:
+      go:
+        package: "github_app_repository"
+        out: "internal/domain/repository/github_app"
         sql_package: "pgx/v5"
         overrides:
           - db_type: "varchar"
