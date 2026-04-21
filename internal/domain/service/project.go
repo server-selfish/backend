@@ -14,11 +14,11 @@ import (
 
 type (
 	ProjectService interface {
-		CreateProject(ctx context.Context, params *schema.CreateProjectParams) error
-		GetAllProjects(ctx context.Context) ([]schema.GetProjectsData, error)
-		GetProjectById(ctx context.Context, id pgtype.UUID) (schema.GetProjectsData, error)
-		UpdateProjectById(ctx context.Context, id pgtype.UUID, params *schema.UpdateProjectParams) error
-		DeleteProjectById(ctx context.Context, id pgtype.UUID) error
+		CreateProject(ctx context.Context, userId pgtype.UUID, params *schema.CreateProjectParams) error
+		GetAllProjects(ctx context.Context, userId pgtype.UUID) ([]schema.GetProjectsData, error)
+		GetProjectById(ctx context.Context, id, userID pgtype.UUID) (schema.GetProjectsData, error)
+		UpdateProjectById(ctx context.Context, id, userID pgtype.UUID, params *schema.UpdateProjectParams) error
+		DeleteProjectById(ctx context.Context, id, userID pgtype.UUID) error
 	}
 	projectService struct {
 		pr *project_repository.Queries
@@ -34,13 +34,16 @@ func NewProjectService(pr *project_repository.Queries, tm pkg.TxManager) Project
 }
 
 // DeleteProjectById implements [ProjectService].
-func (ps *projectService) DeleteProjectById(ctx context.Context, id pgtype.UUID) error {
-	return ps.pr.DeleteProjectById(ctx, id)
+func (ps *projectService) DeleteProjectById(ctx context.Context, id, userID pgtype.UUID) error {
+	return ps.pr.DeleteProjectById(ctx, project_repository.DeleteProjectByIdParams{
+		ID:     id,
+		UserID: userID,
+	})
 }
 
 // GetAllProjects implements [ProjectService].
-func (ps *projectService) GetAllProjects(ctx context.Context) ([]schema.GetProjectsData, error) {
-	projects, err := ps.pr.GetAllProjects(ctx)
+func (ps *projectService) GetAllProjects(ctx context.Context, userID pgtype.UUID) ([]schema.GetProjectsData, error) {
+	projects, err := ps.pr.GetAllProjects(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -59,8 +62,11 @@ func (ps *projectService) GetAllProjects(ctx context.Context) ([]schema.GetProje
 }
 
 // GetProjectById implements [ProjectService].
-func (ps *projectService) GetProjectById(ctx context.Context, id pgtype.UUID) (schema.GetProjectsData, error) {
-	p, err := ps.pr.GetProjectById(ctx, id)
+func (ps *projectService) GetProjectById(ctx context.Context, id, userID pgtype.UUID) (schema.GetProjectsData, error) {
+	p, err := ps.pr.GetProjectById(ctx, project_repository.GetProjectByIdParams{
+		ID:     id,
+		UserID: userID,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return schema.GetProjectsData{}, pkg.ErrNotFound
@@ -76,11 +82,12 @@ func (ps *projectService) GetProjectById(ctx context.Context, id pgtype.UUID) (s
 }
 
 // UpdateProjectById implements [ProjectService].
-func (ps *projectService) UpdateProjectById(ctx context.Context, id pgtype.UUID, params *schema.UpdateProjectParams) error {
+func (ps *projectService) UpdateProjectById(ctx context.Context, id, userID pgtype.UUID, params *schema.UpdateProjectParams) error {
 	if err := ps.pr.UpdateProjectById(ctx, project_repository.UpdateProjectByIdParams{
 		Name:        params.Name,
 		Description: pgtype.Text{String: params.Description},
 		ID:          id,
+		UserID:      userID,
 	}); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -92,10 +99,11 @@ func (ps *projectService) UpdateProjectById(ctx context.Context, id pgtype.UUID,
 }
 
 // UpdateProjectById implements [ProjectService].
-func (ps *projectService) CreateProject(ctx context.Context, params *schema.CreateProjectParams) error {
+func (ps *projectService) CreateProject(ctx context.Context, userID pgtype.UUID, params *schema.CreateProjectParams) error {
 	if err := ps.pr.CreateProject(ctx, project_repository.CreateProjectParams{
 		Name:        params.Name,
 		Description: pgtype.Text{String: params.Description},
+		UserID:      userID,
 	}); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {

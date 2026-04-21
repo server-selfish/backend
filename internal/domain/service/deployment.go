@@ -8,13 +8,14 @@ import (
 
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/client"
 	"github.com/go-git/go-git/v6/plumbing/transport/http"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
-	"github.com/moby/moby/client"
+	moby_client "github.com/moby/moby/client"
 	"github.com/server-selfish/backend/internal/constant"
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
@@ -24,24 +25,24 @@ import (
 
 type (
 	DeploymentService interface {
-		GetDeploymentsByProjectId(ctx context.Context, projectId pgtype.UUID) ([]schema.GetDeploymentData, error)
-		GetDeploymentByDeploymentId(ctx context.Context, deploymentId pgtype.UUID) (schema.GetSingleDeploymentData, error)
-		GetActiveDeploymentByDeploymentId(ctx context.Context, deploymentId pgtype.UUID) (schema.GetActiveDeploymentHistory, error)
-		GetHistoryDeploymentByDeploymentId(ctx context.Context, deploymentId pgtype.UUID) ([]schema.GetHistoryDeploymentHistory, error)
+		GetDeploymentsByProjectId(ctx context.Context, userId, projectId pgtype.UUID) ([]schema.GetDeploymentData, error)
+		GetDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetSingleDeploymentData, error)
+		GetActiveDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetActiveDeploymentHistory, error)
+		GetHistoryDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) ([]schema.GetHistoryDeploymentHistory, error)
 		CreateDeployment(ctx context.Context, params deployment_repository.CreateDeploymentParams) error
-		CreateNewDeploymentVersionByDeploymentId(ctx context.Context, params deployment_repository.CreateDeploymentHistoryParams) error
+		CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, params deployment_repository.CreateDeploymentHistoryParams) error
 		buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error
-		DeleteDeploymentByDeploymentId(ctx context.Context, deploymentId pgtype.UUID) error
+		DeleteDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) error
 	}
 	deploymentService struct {
 		dr *deployment_repository.Queries
 		cr *container_repository.Queries
 		tm pkg.TxManager
-		dc *client.Client
+		dc *moby_client.Client
 	}
 )
 
-func NewDeploymentService(dr *deployment_repository.Queries, tm pkg.TxManager, dc *client.Client) DeploymentService {
+func NewDeploymentService(dr *deployment_repository.Queries, tm pkg.TxManager, dc *moby_client.Client) DeploymentService {
 	return &deploymentService{
 		dr: dr,
 		tm: tm,
@@ -50,12 +51,18 @@ func NewDeploymentService(dr *deployment_repository.Queries, tm pkg.TxManager, d
 }
 
 // CreateNewDeploymentVersion implements [DeploymentService].
-func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context.Context, params deployment_repository.CreateDeploymentHistoryParams) error {
-	activeContainer, err := d.cr.GetActiveDeploymentHistoryContainerByDeploymentId(ctx, params.DeploymentID)
+func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, params deployment_repository.CreateDeploymentHistoryParams) error {
+	activeContainer, err := d.cr.GetActiveDeploymentHistoryContainerByDeploymentId(ctx, container_repository.GetActiveDeploymentHistoryContainerByDeploymentIdParams{
+		UserID:       pgtype.UUID{},
+		DeploymentID: params.DeploymentID,
+	})
 	if err != nil {
 		return err
 	}
-	deployment, err := d.dr.GetDeploymentByDeploymentId(ctx, params.DeploymentID)
+	deployment, err := d.dr.GetDeploymentByDeploymentId(ctx, deployment_repository.GetDeploymentByDeploymentIdParams{
+		UserID: userID,
+		ID:     params.DeploymentID,
+	})
 	if err != nil {
 		return err
 	}
@@ -66,9 +73,11 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context
 	// Clone and extract metadata repository
 	repo, err := git.PlainClone(path, &git.CloneOptions{
 		URL: params.GitRemoteUrl,
-		Auth: &http.BasicAuth{
-			Username: "x-access-token",
-			Password: "",
+		ClientOptions: []client.Option{
+			client.WithHTTPAuth(&http.BasicAuth{
+				Username: "x-access-token",
+				Password: "",
+			}),
 		},
 		ReferenceName: plumbing.NewBranchReferenceName(params.Branch),
 		SingleBranch:  true,
@@ -96,10 +105,13 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context
 		depQuery := d.dr.WithTx(tx)
 
 		// deactivate + stop & remove container of active version
-		if err := depQuery.SetActiveDeploymentHistoryNonActiveByDeploymentId(ctx, params.DeploymentID); err != nil {
+		if err := depQuery.SetActiveDeploymentHistoryNonActiveByDeploymentId(ctx, deployment_repository.SetActiveDeploymentHistoryNonActiveByDeploymentIdParams{
+			UserID:       userID,
+			DeploymentID: params.DeploymentID,
+		}); err != nil {
 			return err
 		}
-		if _, err := d.dc.ContainerStop(ctx, activeContainer.Name, client.ContainerStopOptions{}); err != nil {
+		if _, err := d.dc.ContainerStop(ctx, activeContainer.Name, moby_client.ContainerStopOptions{}); err != nil {
 			return err
 		}
 
@@ -114,6 +126,7 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context
 			BuildFolder:           params.BuildFolder.String,
 			RunCommand:            params.RunCommand.String,
 			DeploymentTechstackID: params.DeploymentTechstackID,
+			UserId:                userID,
 		}); err != nil {
 			return err
 		}
@@ -151,14 +164,14 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context
 			return err
 		}
 		// start activeContainer
-		_, err = d.dc.ContainerStart(ctx, activeContainer.Name, client.ContainerStartOptions{})
+		_, err = d.dc.ContainerStart(ctx, activeContainer.Name, moby_client.ContainerStartOptions{})
 		if err != nil {
 			return err
 		}
 		return err
 	}
 	go func() {
-		d.dc.ContainerRemove(ctx, activeContainer.Name, client.ContainerRemoveOptions{})
+		d.dc.ContainerRemove(ctx, activeContainer.Name, moby_client.ContainerRemoveOptions{})
 	}()
 	return nil
 }
@@ -202,7 +215,10 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 		return err
 	}
 
-	project, err := d.dr.GetProjectByDeploymentId(ctx, p.DeploymentId)
+	project, err := d.dr.GetProjectByDeploymentId(ctx, deployment_repository.GetProjectByDeploymentIdParams{
+		UserID: p.UserId,
+		ID:     p.DeploymentId,
+	})
 	if err != nil {
 		return err
 	}
@@ -219,7 +235,7 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 		return err
 	}
 
-	if _, err := d.dc.ContainerCreate(ctx, client.ContainerCreateOptions{
+	if _, err := d.dc.ContainerCreate(ctx, moby_client.ContainerCreateOptions{
 		Name: p.ContainerName,
 		Config: &container.Config{
 			ExposedPorts: network.PortSet{
@@ -252,7 +268,7 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 	}
 
 	// run container
-	_, err = d.dc.ContainerStart(ctx, p.ContainerName, client.ContainerStartOptions{})
+	_, err = d.dc.ContainerStart(ctx, p.ContainerName, moby_client.ContainerStartOptions{})
 	if err != nil {
 		return err
 	}
@@ -260,8 +276,11 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 }
 
 // DeleteDeploymentByDeploymentId implements [DeploymentService].
-func (d *deploymentService) DeleteDeploymentByDeploymentId(ctx context.Context, deploymentId pgtype.UUID) error {
-	if err := d.dr.DeleteDeploymentByDeploymentId(ctx, deploymentId); err != nil {
+func (d *deploymentService) DeleteDeploymentByDeploymentId(ctx context.Context, userID, deploymentId pgtype.UUID) error {
+	if err := d.dr.DeleteDeploymentByDeploymentId(ctx, deployment_repository.DeleteDeploymentByDeploymentIdParams{
+		UserID: userID,
+		ID:     deploymentId,
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -276,8 +295,11 @@ func (d *deploymentService) CreateDeployment(ctx context.Context, params deploym
 }
 
 // GetHistoryDeploymentByDeploymentId implements [DeploymentService].
-func (d *deploymentService) GetHistoryDeploymentByDeploymentId(ctx context.Context, deploymentId pgtype.UUID) ([]schema.GetHistoryDeploymentHistory, error) {
-	hd, err := d.dr.GetDeploymentHistoryByDeploymentId(ctx, deploymentId)
+func (d *deploymentService) GetHistoryDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) ([]schema.GetHistoryDeploymentHistory, error) {
+	hd, err := d.dr.GetDeploymentHistoryByDeploymentId(ctx, deployment_repository.GetDeploymentHistoryByDeploymentIdParams{
+		UserID:       userId,
+		DeploymentID: deploymentId,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, pkg.ErrNotFound
@@ -301,8 +323,11 @@ func (d *deploymentService) GetHistoryDeploymentByDeploymentId(ctx context.Conte
 }
 
 // GetActiveDeploymentByDeploymentId implements [DeploymentService].
-func (d *deploymentService) GetActiveDeploymentByDeploymentId(ctx context.Context, deploymentId pgtype.UUID) (schema.GetActiveDeploymentHistory, error) {
-	ad, err := d.dr.GetActiveDeploymentHistoryByDeploymentId(ctx, deploymentId)
+func (d *deploymentService) GetActiveDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetActiveDeploymentHistory, error) {
+	ad, err := d.dr.GetActiveDeploymentHistoryByDeploymentId(ctx, deployment_repository.GetActiveDeploymentHistoryByDeploymentIdParams{
+		UserID:       userId,
+		DeploymentID: deploymentId,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return schema.GetActiveDeploymentHistory{}, pkg.ErrNotFound
@@ -326,8 +351,11 @@ func (d *deploymentService) GetActiveDeploymentByDeploymentId(ctx context.Contex
 }
 
 // GetDeploymentByDeploymentId implements [DeploymentService].
-func (d *deploymentService) GetDeploymentByDeploymentId(ctx context.Context, deploymentId pgtype.UUID) (schema.GetSingleDeploymentData, error) {
-	deployment, err := d.dr.GetDeploymentByDeploymentId(ctx, deploymentId)
+func (d *deploymentService) GetDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetSingleDeploymentData, error) {
+	deployment, err := d.dr.GetDeploymentByDeploymentId(ctx, deployment_repository.GetDeploymentByDeploymentIdParams{
+		UserID: userId,
+		ID:     deploymentId,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return schema.GetSingleDeploymentData{}, pkg.ErrNotFound
@@ -344,8 +372,11 @@ func (d *deploymentService) GetDeploymentByDeploymentId(ctx context.Context, dep
 }
 
 // GetDeploymentsByProjectId implements [DeploymentService].
-func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, projectId pgtype.UUID) ([]schema.GetDeploymentData, error) {
-	deployments, err := d.dr.GetDeploymentsByProjectId(ctx, projectId)
+func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, userId, projectId pgtype.UUID) ([]schema.GetDeploymentData, error) {
+	deployments, err := d.dr.GetDeploymentsByProjectId(ctx, deployment_repository.GetDeploymentsByProjectIdParams{
+		UserID:    userId,
+		ProjectID: projectId,
+	})
 	if err != nil {
 		return nil, err
 	}
