@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -56,9 +57,13 @@ func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.Resp
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
-	if err := d.ds.CreateNewDeploymentVersionByDeploymentId(ctx, ui, deployment_repository.CreateDeploymentHistoryParams{
+	ii, err := strconv.ParseInt(req.InstallationID, 10, 64)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	if err := d.ds.CreateNewDeploymentVersionByDeploymentId(ctx, ui, ii, deployment_repository.CreateDeploymentHistoryParams{
 		DeploymentID:          id,
-		GitRemoteUrl:          req.GitRemoteUrl,
 		Branch:                req.Branch,
 		ExternalPort:          req.ExternalPort,
 		DeploymentTechstackID: req.DeploymentTechstackID,
@@ -85,8 +90,10 @@ func (d *deploymentHandler) CreateDeployment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := d.ds.CreateDeployment(ctx, deployment_repository.CreateDeploymentParams{
-		Name:      req.Name,
-		ProjectID: id,
+		Name:           req.Name,
+		ProjectID:      id,
+		GitRemoteUrl:   req.GitRemoteUrl,
+		InstallationID: req.InstallationID,
 	}); err != nil {
 		pkg.ReturnError(w, err)
 		return

@@ -20,6 +20,7 @@ import (
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	"github.com/server-selfish/backend/internal/domain/schema"
+	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	"github.com/server-selfish/backend/internal/pkg"
 )
 
@@ -30,7 +31,7 @@ type (
 		GetActiveDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetActiveDeploymentHistory, error)
 		GetHistoryDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) ([]schema.GetHistoryDeploymentHistory, error)
 		CreateDeployment(ctx context.Context, params deployment_repository.CreateDeploymentParams) error
-		CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, params deployment_repository.CreateDeploymentHistoryParams) error
+		CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, installationID int64, params deployment_repository.CreateDeploymentHistoryParams) error
 		buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error
 		DeleteDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) error
 	}
@@ -39,19 +40,21 @@ type (
 		cr *container_repository.Queries
 		tm pkg.TxManager
 		dc *moby_client.Client
+		gi github_infra.GithubInfra
 	}
 )
 
-func NewDeploymentService(dr *deployment_repository.Queries, tm pkg.TxManager, dc *moby_client.Client) DeploymentService {
+func NewDeploymentService(dr *deployment_repository.Queries, cr *container_repository.Queries, tm pkg.TxManager, dc *moby_client.Client, gi github_infra.GithubInfra) DeploymentService {
 	return &deploymentService{
 		dr: dr,
 		tm: tm,
 		dc: dc,
+		gi: gi,
 	}
 }
 
 // CreateNewDeploymentVersion implements [DeploymentService].
-func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, params deployment_repository.CreateDeploymentHistoryParams) error {
+func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, installationID int64, params deployment_repository.CreateDeploymentHistoryParams) error {
 	activeContainer, err := d.cr.GetActiveDeploymentHistoryContainerByDeploymentId(ctx, container_repository.GetActiveDeploymentHistoryContainerByDeploymentIdParams{
 		UserID:       pgtype.UUID{},
 		DeploymentID: params.DeploymentID,
@@ -68,15 +71,17 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context
 	}
 	path := fmt.Sprintf("tmp/builds/%s/%s/%s", deployment.Name, params.Branch, params.Version)
 
-	// TODO: get access token by installation id
-
+	it, err := d.gi.CreateInstallationToken(ctx, installationID)
+	if err != nil {
+		return err
+	}
 	// Clone and extract metadata repository
 	repo, err := git.PlainClone(path, &git.CloneOptions{
-		URL: params.GitRemoteUrl,
+		URL: deployment.GitRemoteUrl,
 		ClientOptions: []client.Option{
 			client.WithHTTPAuth(&http.BasicAuth{
 				Username: "x-access-token",
-				Password: "",
+				Password: it.Token,
 			}),
 		},
 		ReferenceName: plumbing.NewBranchReferenceName(params.Branch),
@@ -336,7 +341,6 @@ func (d *deploymentService) GetActiveDeploymentByDeploymentId(ctx context.Contex
 	}
 	res := schema.GetActiveDeploymentHistory{
 		DeploymentHistoryID: ad.DeploymentHistoryID,
-		GitRemoteURL:        ad.GitRemoteUrl,
 		Branch:              ad.Branch,
 		CommitId:            ad.CommitID,
 		CommitMessage:       ad.CommitMessage,
@@ -363,10 +367,11 @@ func (d *deploymentService) GetDeploymentByDeploymentId(ctx context.Context, use
 		return schema.GetSingleDeploymentData{}, err
 	}
 	res := schema.GetSingleDeploymentData{
-		ID:        deployment.ID.String(),
-		Name:      deployment.Name,
-		CreatedAt: deployment.CreatedAt.Time.String(),
-		UpdatedAt: deployment.UpdatedAt.Time.String(),
+		ID:           deployment.ID.String(),
+		Name:         deployment.Name,
+		GitRemoteURL: deployment.GitRemoteUrl,
+		CreatedAt:    deployment.CreatedAt.Time.String(),
+		UpdatedAt:    deployment.UpdatedAt.Time.String(),
 	}
 	return res, nil
 }
@@ -388,6 +393,7 @@ func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, userI
 		res = append(res, schema.GetDeploymentData{
 			DeploymentID:      dep.DeploymentID,
 			DeploymentName:    dep.DeploymentName,
+			GitRemoteUrl:      dep.GitRemoteUrl,
 			Branch:            dep.Branch,
 			CommitID:          dep.CommitID,
 			CommitMessage:     dep.CommitMessage,
