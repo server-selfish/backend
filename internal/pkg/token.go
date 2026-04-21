@@ -1,12 +1,17 @@
 package pkg
 
 import (
+	"crypto"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -128,4 +133,43 @@ func (tm *TokenManager) NewRefreshToken() (raw string, tokenHash string, expires
 func HashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
+}
+
+func GenerateAppJWTFromPEM(pkPEM, appId string) (string, error) {
+	keyPEM := strings.TrimSpace(pkPEM)
+	if keyPEM == "" {
+		return "", fmt.Errorf("read private key pem")
+	}
+	privateKey, err := parseRSAPrivateKeyFromPEM(keyPEM)
+	if err != nil {
+		return "", err
+	}
+
+	now := time.Now().UTC()
+	header := `{"alg":"RS256","typ":"JWT"}`
+
+	appIDInt, err := strconv.ParseInt(appId, 10, 64)
+	if err != nil {
+		return "", errors.New("invalid github app id")
+	}
+
+	payloadMap := map[string]any{
+		"iat": now.Add(-30 * time.Second).Unix(),
+		"exp": now.Add(9 * time.Minute).Unix(),
+		"iss": appIDInt,
+	}
+	payloadBytes, err := json.Marshal(payloadMap)
+	if err != nil {
+		return "", err
+	}
+
+	unsigned := base64.RawURLEncoding.EncodeToString([]byte(header)) + "." + base64.RawURLEncoding.EncodeToString(payloadBytes)
+	hashed := sha256.Sum256([]byte(unsigned))
+
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hashed[:])
+	if err != nil {
+		return "", fmt.Errorf("sign jwt: %w", err)
+	}
+
+	return unsigned + "." + base64.RawURLEncoding.EncodeToString(signature), nil
 }
