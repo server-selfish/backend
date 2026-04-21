@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS deployment_techstack(
 CREATE TABLE IF NOT EXISTS deployment_history(
   id SERIAL PRIMARY KEY,
   deployment_id UUID NOT NULL REFERENCES deployment(id) ON DELETE CASCADE,
-  git_remote_url VARCHAR NOT NULL,
   branch VARCHAR NOT NULL,
   commit_id VARCHAR NOT NULL,
   commit_msg TEXT NOT NULL,
