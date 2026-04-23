@@ -2,12 +2,15 @@ package handler
 
 import (
 	"encoding/json"
+	"html/template"
 	"net/http"
 	"strings"
 
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
+	"github.com/server-selfish/backend/internal/presentation"
+	"github.com/spf13/viper"
 )
 
 type (
@@ -22,6 +25,13 @@ type (
 	authHandler struct {
 		as service.AuthService
 	}
+)
+
+var githubCallbackTmpl = template.Must(
+	template.New("github_callback.html").ParseFS(
+		presentation.PresentationEmbed,
+		"templates/github_callback.html",
+	),
 )
 
 func NewAuthHandler(as service.AuthService) AuthHandler {
@@ -44,17 +54,6 @@ func (h *authHandler) GithubLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Optional helper for frontend if it wants to keep track of state.
-	// http.SetCookie(w, &http.Cookie{
-	// 	Name:     "oauth_state",
-	// 	Value:    state,
-	// 	Path:     "/",
-	// 	HttpOnly: true,
-	// 	Secure:   strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil,
-	// 	SameSite: http.SameSiteLaxMode,
-	// 	MaxAge:   600,
-	// })
-
 	http.Redirect(w, r, loginURL, http.StatusTemporaryRedirect)
 }
 
@@ -63,29 +62,27 @@ func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 
 	// validation query params
 	code := r.URL.Query().Get("code")
-	state := r.URL.Query().Get("state")
-	if code == "" || state == "" {
+	if code == "" {
 		pkg.WriteJSON(w, http.StatusBadRequest, schema.AuthErrorResponse{
 			Message: "invalid callback params",
-			Error:   "missing code or state",
+			Error:   "missing code ",
 		})
 		return
 	}
 
 	// handler github callback service call
-	tokenPair, err := h.as.HandleGithubCallback(ctx, code, state, r.UserAgent(), pkg.ReadIP(r))
+	tokenPair, err := h.as.HandleGithubCallback(ctx, code, r.UserAgent(), pkg.ReadIP(r))
 	if err != nil {
 		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "github authentication fai 	led",
+			Message: "github authentication failed",
 			Error:   err.Error(),
 		})
 		return
 	}
 
-	// set refresh token to cookie httponly
 	if tokenPair.RefreshToken != "" {
 		http.SetCookie(w, &http.Cookie{
-			Name:     "refresh_token",
+			Name:     "selfish_refresh_token",
 			Value:    tokenPair.RefreshToken,
 			Path:     "/",
 			HttpOnly: true,
@@ -94,17 +91,16 @@ func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 			MaxAge:   int(tokenPair.RefreshTokenExpiresIn),
 		})
 	}
-
-	// send back response with access token
-	pkg.WriteJSON(w, http.StatusOK, schema.GithubCallbackResponse{
-		Message: "github login success",
-		Data: schema.AuthTokenPair{
-			AccessToken:           tokenPair.AccessToken,
-			AccessTokenExpiresIn:  tokenPair.AccessTokenExpiresIn,
-			RefreshTokenExpiresIn: tokenPair.RefreshTokenExpiresIn,
-			TokenType:             tokenPair.TokenType,
-		},
-	})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := githubCallbackTmpl.Execute(w, struct {
+		AccessToken     string
+		FrontendBaseURL string
+	}{
+		AccessToken:     tokenPair.AccessToken,
+		FrontendBaseURL: viper.GetString("frontend.base.url"),
+	}); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
 }
 
 func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +115,7 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	// get refresh token from cookie
 	if strings.TrimSpace(req.RefreshToken) == "" {
-		if c, err := r.Cookie("refresh_token"); err == nil {
+		if c, err := r.Cookie("selfish_refresh_token"); err == nil {
 			req.RefreshToken = c.Value
 		}
 	}
@@ -144,7 +140,7 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// rotate cookie refresh token
 	if tokenPair.RefreshToken != "" {
 		http.SetCookie(w, &http.Cookie{
-			Name:     "refresh_token",
+			Name:     "selfish_refresh_token",
 			Value:    tokenPair.RefreshToken,
 			Path:     "/",
 			HttpOnly: true,

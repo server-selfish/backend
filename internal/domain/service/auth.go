@@ -22,7 +22,7 @@ import (
 type (
 	AuthService interface {
 		GetGithubLoginURL(ctx context.Context) (loginURL string, err error)
-		HandleGithubCallback(ctx context.Context, code string, state string, userAgent string, ipAddress string) (schema.AuthTokenPair, error)
+		HandleGithubCallback(ctx context.Context, code string, userAgent string, ipAddress string) (schema.AuthTokenPair, error)
 		RefreshAccessToken(ctx context.Context, refreshToken string, userAgent string, ipAddress string) (schema.AuthTokenPair, error)
 		Logout(ctx context.Context, refreshToken string) error
 		GetMe(ctx context.Context, userID string) (schema.UserMeData, error)
@@ -95,12 +95,9 @@ func (a *authService) GetGithubLoginURL(ctx context.Context) (string, error) {
 	return u.String(), nil
 }
 
-func (a *authService) HandleGithubCallback(ctx context.Context, code string, state string, userAgent string, ipAddress string) (schema.AuthTokenPair, error) {
+func (a *authService) HandleGithubCallback(ctx context.Context, code string, userAgent string, ipAddress string) (schema.AuthTokenPair, error) {
 	if strings.TrimSpace(code) == "" {
 		return schema.AuthTokenPair{}, errors.New("oauth code is required")
-	}
-	if strings.TrimSpace(state) == "" {
-		return schema.AuthTokenPair{}, errors.New("oauth state is required")
 	}
 
 	// get the github access token to be accessed by request
