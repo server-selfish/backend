@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -65,7 +66,11 @@ func (g *githubInfra) CreateInstallationToken(ctx context.Context, installationI
 	if err != nil {
 		return schema.GithubAppInstallationToken{}, fmt.Errorf("create installation token request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode >= 400 {
 		return schema.GithubAppInstallationToken{}, fmt.Errorf("create installation token failed: status=%d", resp.StatusCode)
@@ -112,7 +117,11 @@ func (g *githubInfra) FetchInstallation(ctx context.Context, installationID int6
 	if err != nil {
 		return schema.GithubInstallationResponse{}, fmt.Errorf("fetch installation request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode >= 400 {
 		return schema.GithubInstallationResponse{}, fmt.Errorf("fetch installation failed: status=%d", resp.StatusCode)

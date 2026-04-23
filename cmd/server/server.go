@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -41,11 +42,17 @@ func (s *Server) Run(ctx context.Context) {
 			dc *client.Client,
 		) {
 			defer cache.Close()
-			defer dc.Close()
+			defer func() {
+				if err := dc.Close(); err != nil {
+					log.Printf("failed to close dc: %v", err)
+				}
+			}()
 
 			defer func() {
-				if err := mq.Drain(); err != nil {
-					logger.Error().Err(err).Msg("Failed to close mq client connection")
+				if mq.Status() == nats.CONNECTED {
+					_ = mq.Drain()
+				} else {
+					mq.Close()
 				}
 			}()
 			defer db.Close()
@@ -78,6 +85,37 @@ func (s *Server) Run(ctx context.Context) {
 						logger.Fatal().Err(err).Msg("Failed to listen and serve http server")
 					}
 				default:
+					type routeEntry struct {
+						method string
+						route  string
+					}
+					routes := make([]routeEntry, 0, 32)
+					_ = chi.Walk(r, func(method string, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
+						routes = append(routes, routeEntry{method: method, route: route})
+						return nil
+					})
+					if len(routes) > 0 {
+						sort.Slice(routes, func(i, j int) bool {
+							if routes[i].route == routes[j].route {
+								return routes[i].method < routes[j].method
+							}
+							return routes[i].route < routes[j].route
+						})
+						maxMethod := 0
+						maxRoute := 0
+						for _, rt := range routes {
+							if len(rt.method) > maxMethod {
+								maxMethod = len(rt.method)
+							}
+							if len(rt.route) > maxRoute {
+								maxRoute = len(rt.route)
+							}
+						}
+						logger.Info().Msgf("Registered routes (%d):", len(routes))
+						for _, rt := range routes {
+							logger.Info().Msgf("%-*s  %-*s", maxMethod, rt.method, maxRoute, rt.route)
+						}
+					}
 					if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 						logger.Fatal().Err(err).Msg("Failed to listen and serve http server")
 					}

@@ -106,6 +106,10 @@ func (p *projectHandler) GetProjectById(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
 	project, err := p.ps.GetProjectById(ctx, id, ui)
 	if err != nil {
 		pkg.ReturnError(w, err)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -290,7 +291,11 @@ func (s *githubAppService) ListInstallationRepositories(ctx context.Context, use
 	if err != nil {
 		return nil, fmt.Errorf("list installation repositories request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("list installation repositories failed: status=%d", resp.StatusCode)

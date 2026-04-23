@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 
 	"github.com/go-git/go-git/v6"
@@ -176,7 +177,9 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context
 		return err
 	}
 	go func() {
-		d.dc.ContainerRemove(ctx, activeContainer.Name, moby_client.ContainerRemoveOptions{})
+		if _, err := d.dc.ContainerRemove(ctx, activeContainer.Name, moby_client.ContainerRemoveOptions{}); err != nil {
+			log.Printf("failed to remove container: %v", err)
+		}
 	}()
 	return nil
 }

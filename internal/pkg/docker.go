@@ -3,6 +3,7 @@ package pkg
 import (
 	"context"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,7 +40,11 @@ func BuildDockerImage(ctx context.Context, dc *client.Client, pPath string, imag
 	if err != nil {
 		return err
 	}
-	defer buildCtx.Close()
+	defer func() {
+		if err := buildCtx.Close(); err != nil {
+			log.Printf("failed to close build context: %v", err)
+		}
+	}()
 
 	apiBuildArgs := map[string]*string{}
 	for k, v := range buildArgs {
@@ -57,7 +62,11 @@ func BuildDockerImage(ctx context.Context, dc *client.Client, pPath string, imag
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	// Optional: stream build output to logs/stdout
 	_, _ = io.Copy(os.Stdout, resp.Body)

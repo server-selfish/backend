@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -295,7 +296,11 @@ func (a *authService) exchangeGithubCode(ctx context.Context, code string) (stri
 	if err != nil {
 		return "", fmt.Errorf("github token request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode >= 400 {
 		return "", fmt.Errorf("github token exchange failed: status=%d", resp.StatusCode)
@@ -325,7 +330,11 @@ func (a *authService) fetchGithubProfile(ctx context.Context, githubAccessToken 
 	if err != nil {
 		return schema.GithubUserProfile{}, fmt.Errorf("github profile request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode >= 400 {
 		return schema.GithubUserProfile{}, fmt.Errorf("github profile request failed: status=%d", resp.StatusCode)

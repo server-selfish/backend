@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"context"
+	"log"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,7 +24,12 @@ func (tm *txManager) WithTx(ctx context.Context, fn func(tx pgx.Tx) error) error
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+
+		if err := tx.Rollback(ctx); err != nil {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	if err := fn(tx); err != nil {
 		return err
