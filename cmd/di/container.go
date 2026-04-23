@@ -1,6 +1,7 @@
 package di
 
 import (
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/server-selfish/backend/config/cache"
 	docker_client "github.com/server-selfish/backend/config/docker"
@@ -49,6 +50,21 @@ func BuildContainer() *dig.Container {
 	// db connection
 	if err := container.Provide(storage.NewPostgresqlConn); err != nil {
 		panic("Failed to provide db connection: " + err.Error())
+	}
+	if err := container.Provide(func(pool *pgxpool.Pool) project_repository.DBTX { return pool }); err != nil {
+		panic("Failed to provide project dbtx: " + err.Error())
+	}
+	if err := container.Provide(func(pool *pgxpool.Pool) deployment_repository.DBTX { return pool }); err != nil {
+		panic("Failed to provide deployment dbtx: " + err.Error())
+	}
+	if err := container.Provide(func(pool *pgxpool.Pool) container_repository.DBTX { return pool }); err != nil {
+		panic("Failed to provide container dbtx: " + err.Error())
+	}
+	if err := container.Provide(func(pool *pgxpool.Pool) user_repository.DBTX { return pool }); err != nil {
+		panic("Failed to provide user dbtx: " + err.Error())
+	}
+	if err := container.Provide(func(pool *pgxpool.Pool) github_app_repository.DBTX { return pool }); err != nil {
+		panic("Failed to provide github app dbtx: " + err.Error())
 	}
 
 	// valkey connection
