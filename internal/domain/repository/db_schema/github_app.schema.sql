@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS github_installations (
   id UUID PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  installation_id BIGINT NOT NULL,
+  installation_id BIGINT NOT NULL UNIQUE,
   account_login TEXT,
   account_id BIGINT,
   target_type TEXT,

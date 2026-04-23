@@ -1,1 +1,3 @@
 DROP TABLE IF EXISTS deployment_history CASCADE;
+DROP TABLE IF EXISTS container CASCADE;
+DROP TABLE IF EXISTS deployment_techstack CASCADE;
