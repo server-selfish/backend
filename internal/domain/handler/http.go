@@ -6,10 +6,10 @@ func RegisterPublicAuthRoutes(r chi.Router, ah AuthHandler) {
 	r.Get("/auth/github/login", ah.GithubLogin)
 	r.Get("/auth/github/callback", ah.GithubCallback)
 	r.Post("/auth/refresh", ah.Refresh)
+	r.Post("/auth/logout", ah.Logout)
 }
 
 func RegisterProtectedAuthRoutes(r chi.Router, ah AuthHandler) {
-	r.Post("/auth/logout", ah.Logout)
 	r.Get("/auth/me", ah.Me)
 }
 
