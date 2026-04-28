@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"strings"
 
+	"golang.org/x/sync/singleflight"
+
+	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
@@ -23,7 +26,8 @@ type (
 	}
 
 	authHandler struct {
-		as service.AuthService
+		as     service.AuthService
+		logger zerolog.Logger
 	}
 )
 
@@ -34,19 +38,19 @@ var githubCallbackTmpl = template.Must(
 	),
 )
 
-func NewAuthHandler(as service.AuthService) AuthHandler {
+func NewAuthHandler(as service.AuthService, logger zerolog.Logger) AuthHandler {
 	return &authHandler{
-		as: as,
+		as:     as,
+		logger: logger,
 	}
 }
 
 func (h *authHandler) GithubLogin(w http.ResponseWriter, r *http.Request) {
-
-	// just redirect to login URL with client id and redirect callback URI defined
 	ctx := r.Context()
 
 	loginURL, err := h.as.GetGithubLoginURL(ctx)
 	if err != nil {
+		h.logger.Error().Msg(err.Error())
 		pkg.WriteJSON(w, http.StatusInternalServerError, schema.AuthErrorResponse{
 			Message: "failed to build github login url",
 			Error:   err.Error(),
@@ -60,7 +64,6 @@ func (h *authHandler) GithubLogin(w http.ResponseWriter, r *http.Request) {
 func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// validation query params
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		pkg.WriteJSON(w, http.StatusBadRequest, schema.AuthErrorResponse{
@@ -70,9 +73,9 @@ func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// handler github callback service call
 	tokenPair, err := h.as.HandleGithubCallback(ctx, code, r.UserAgent(), pkg.ReadIP(r))
 	if err != nil {
+		h.logger.Error().Msg(err.Error())
 		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
 			Message: "github authentication failed",
 			Error:   err.Error(),
@@ -91,6 +94,18 @@ func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 			MaxAge:   int(tokenPair.RefreshTokenExpiresIn),
 		})
 	}
+	if tokenPair.AccessToken != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "selfish_access_token",
+			Value:    tokenPair.AccessToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int(tokenPair.AccessTokenExpiresIn),
+		})
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := githubCallbackTmpl.Execute(w, struct {
 		AccessToken     string
@@ -102,6 +117,8 @@ func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }
+
+var refreshGroup singleflight.Group
 
 func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -128,11 +145,25 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get the new access token inside token pair
-	tokenPair, err := h.as.RefreshAccessToken(ctx, req.RefreshToken, r.UserAgent(), pkg.ReadIP(r))
+	v, err, _ := refreshGroup.Do(req.RefreshToken, func() (any, error) {
+		return h.as.RefreshAccessToken(ctx, req.RefreshToken, r.UserAgent(), pkg.ReadIP(r))
+	})
+
 	if err != nil {
+		h.logger.Error().Msg(err.Error())
 		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
 			Message: "failed to refresh token",
 			Error:   err.Error(),
+		})
+		return
+	}
+
+	tokenPair, ok := v.(schema.AuthTokenPair)
+	if !ok {
+		// handle the error, e.g.:
+		pkg.WriteJSON(w, http.StatusInternalServerError, schema.AuthErrorResponse{
+			Message: "internal error",
+			Error:   "failed to cast token pair",
 		})
 		return
 	}
@@ -150,12 +181,25 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	if tokenPair.AccessToken != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "selfish_access_token",
+			Value:    tokenPair.AccessToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int(tokenPair.AccessTokenExpiresIn),
+		})
+	}
+
 	// send back response with access token
 	pkg.WriteJSON(w, http.StatusOK, schema.RefreshTokenResponse{
 		Message: "token refreshed",
 		Data: schema.AuthTokenPair{
 			AccessToken:           tokenPair.AccessToken,
 			AccessTokenExpiresIn:  tokenPair.AccessTokenExpiresIn,
+			RefreshToken:          tokenPair.RefreshToken,
 			RefreshTokenExpiresIn: tokenPair.RefreshTokenExpiresIn,
 			TokenType:             tokenPair.TokenType,
 		},
@@ -177,6 +221,7 @@ func (h *authHandler) Me(w http.ResponseWriter, r *http.Request) {
 	// get user profile
 	me, err := h.as.GetMe(ctx, userID)
 	if err != nil {
+		h.logger.Error().Msg(err.Error())
 		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
 			Message: "failed to resolve user",
 			Error:   err.Error(),
@@ -205,7 +250,7 @@ func (h *authHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		req.RefreshToken = ""
 	}
 	if strings.TrimSpace(req.RefreshToken) == "" {
-		if c, err := r.Cookie("refresh_token"); err == nil {
+		if c, err := r.Cookie("selfish_refresh_token"); err == nil {
 			req.RefreshToken = c.Value
 		}
 	}
@@ -216,7 +261,17 @@ func (h *authHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	// clear cookie regardless of service result
 	http.SetCookie(w, &http.Cookie{
-		Name:     "refresh_token",
+		Name:     "selfish_refresh_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "selfish_access_token",
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
