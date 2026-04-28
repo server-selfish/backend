@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
@@ -18,13 +19,15 @@ type (
 		DeleteProjectById(w http.ResponseWriter, r *http.Request)
 	}
 	projectHandler struct {
-		ps service.ProjectService
+		ps     service.ProjectService
+		logger zerolog.Logger
 	}
 )
 
-func NewProjectHandler(ps service.ProjectService) ProjectHandler {
+func NewProjectHandler(ps service.ProjectService, logger zerolog.Logger) ProjectHandler {
 	return &projectHandler{
-		ps: ps,
+		ps:     ps,
+		logger: logger,
 	}
 }
 
@@ -65,6 +68,7 @@ func (p *projectHandler) DeleteProjectById(w http.ResponseWriter, r *http.Reques
 // GetAllProjects implements [ProjectHandler].
 func (p *projectHandler) GetAllProjects(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
 		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
@@ -74,11 +78,13 @@ func (p *projectHandler) GetAllProjects(w http.ResponseWriter, r *http.Request) 
 	}
 	id, err := pkg.StringToPgUUID(userID)
 	if err != nil {
+		p.logger.Error().Msg(err.Error())
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
 	projects, err := p.ps.GetAllProjects(ctx, id)
 	if err != nil {
+		p.logger.Error().Msg(err.Error())
 		pkg.ReturnError(w, err)
 		return
 	}
@@ -166,6 +172,7 @@ func (p *projectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	ui, err := pkg.StringToPgUUID(userID)
 	if err != nil {
+		p.logger.Error().Msg(err.Error())
 		pkg.ReturnError(w, pkg.ErrBadRequest)
 		return
 	}
@@ -174,6 +181,7 @@ func (p *projectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := p.ps.CreateProject(ctx, ui, &req); err != nil {
+		p.logger.Error().Msg(err.Error())
 		pkg.ReturnError(w, err)
 		return
 	}
