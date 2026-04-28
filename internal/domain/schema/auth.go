@@ -14,7 +14,7 @@ type GithubCallbackResponse struct {
 }
 
 type RefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
+	RefreshToken string `json:"selfish_refresh_token" validate:"required"`
 }
 
 type RefreshTokenResponse struct {
