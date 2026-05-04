@@ -56,6 +56,7 @@ func (ps *projectService) GetAllProjects(ctx context.Context, userID pgtype.UUID
 			ID:          p.ID.String(),
 			Name:        p.Name,
 			Description: p.Description.String,
+			CreatedAt:   p.CreatedAt.Time.String(),
 		})
 	}
 	return res, nil
@@ -102,7 +103,7 @@ func (ps *projectService) UpdateProjectById(ctx context.Context, id, userID pgty
 func (ps *projectService) CreateProject(ctx context.Context, userID pgtype.UUID, params *schema.CreateProjectParams) error {
 	if err := ps.pr.CreateProject(ctx, project_repository.CreateProjectParams{
 		Name:        params.Name,
-		Description: pgtype.Text{String: params.Description},
+		Description: pgtype.Text{String: params.Description, Valid: true},
 		UserID:      userID,
 	}); err != nil {
 		var pgErr *pgconn.PgError
