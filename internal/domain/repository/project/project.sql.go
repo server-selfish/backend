@@ -50,6 +50,8 @@ SELECT
 FROM public.project p
 WHERE
   p.user_id = $1
+ORDER BY
+  COALESCE(p.updated_at, p.created_at) DESC
 `
 
 func (q *Queries) GetAllProjects(ctx context.Context, userID pgtype.UUID) ([]Project, error) {

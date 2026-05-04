@@ -3,7 +3,9 @@ SELECT
   *
 FROM public.project p
 WHERE
-  p.user_id = $1 ;
+  p.user_id = $1
+ORDER BY
+  COALESCE(p.updated_at, p.created_at) DESC;
 
 -- name: GetProjectById :one
 SELECT
