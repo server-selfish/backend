@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5"
@@ -17,6 +18,7 @@ type (
 		CreateProject(ctx context.Context, userId pgtype.UUID, params *schema.CreateProjectParams) error
 		GetAllProjects(ctx context.Context, userId pgtype.UUID) ([]schema.GetProjectsData, error)
 		GetProjectById(ctx context.Context, id, userID pgtype.UUID) (schema.GetProjectsData, error)
+		GetProjectByName(ctx context.Context, name string, userID pgtype.UUID) (schema.GetProjectDetail, error)
 		UpdateProjectById(ctx context.Context, id, userID pgtype.UUID, params *schema.UpdateProjectParams) error
 		DeleteProjectById(ctx context.Context, id, userID pgtype.UUID) error
 	}
@@ -31,6 +33,32 @@ func NewProjectService(pr *project_repository.Queries, tm pkg.TxManager) Project
 		pr: pr,
 		tm: tm,
 	}
+}
+
+// GetProjectByName implements [ProjectService].
+func (ps *projectService) GetProjectByName(ctx context.Context, name string, userID pgtype.UUID) (schema.GetProjectDetail, error) {
+	p, err := ps.pr.GetProjectByName(ctx, project_repository.GetProjectByNameParams{
+		UserID: userID,
+		Name:   name,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return schema.GetProjectDetail{}, pkg.ErrNotFound
+		}
+		return schema.GetProjectDetail{}, err
+	}
+	var deployments []schema.ProjectDeploymentSummary
+	if err := json.Unmarshal(p.Deployments, &deployments); err != nil {
+		return schema.GetProjectDetail{}, err
+	}
+	res := schema.GetProjectDetail{
+		ProjectName:        p.ProjectName,
+		ProjectDescription: p.ProjectDescription.String,
+		ProjectCreatedAt:   p.ProjectCreatedAt.Time.String(),
+		ProjectUpdatedAt:   p.ProjectUpdatedAt.Time.String(),
+		Deployments:        deployments,
+	}
+	return res, nil
 }
 
 // DeleteProjectById implements [ProjectService].

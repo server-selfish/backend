@@ -110,6 +110,63 @@ func (q *Queries) GetProjectById(ctx context.Context, arg GetProjectByIdParams) 
 	return i, err
 }
 
+const getProjectByName = `-- name: GetProjectByName :one
+SELECT
+  p.name AS project_name
+  ,p.description AS project_description
+  ,p.created_at AS project_created_at
+  ,p.updated_at AS project_updated_at
+  ,json_agg(
+    DISTINCT jsonb_build_object(
+      'deployment_name', d.name,
+      'techstack_name', dt.name,
+      'container_name', c.name
+    )
+  ) AS deployments
+FROM
+  public.project p
+LEFT JOIN deployment d
+	ON d.project_id = p.id
+LEFT JOIN deployment_history dh
+	ON dh.deployment_id = d.id
+		AND dh.is_active IS true
+LEFT JOIN deployment_techstack dt
+	ON dt.id = dh.deployment_techstack_id
+LEFT JOIN container c
+	ON c.deployment_history_id = dh.id
+WHERE
+  p.user_id = $1
+  AND p.name ILIKE $2
+GROUP BY
+  p.name, p.description, p.created_at, p.updated_at
+`
+
+type GetProjectByNameParams struct {
+	UserID pgtype.UUID
+	Name   string
+}
+
+type GetProjectByNameRow struct {
+	ProjectName        string
+	ProjectDescription pgtype.Text
+	ProjectCreatedAt   pgtype.Timestamptz
+	ProjectUpdatedAt   pgtype.Timestamptz
+	Deployments        []byte
+}
+
+func (q *Queries) GetProjectByName(ctx context.Context, arg GetProjectByNameParams) (GetProjectByNameRow, error) {
+	row := q.db.QueryRow(ctx, getProjectByName, arg.UserID, arg.Name)
+	var i GetProjectByNameRow
+	err := row.Scan(
+		&i.ProjectName,
+		&i.ProjectDescription,
+		&i.ProjectCreatedAt,
+		&i.ProjectUpdatedAt,
+		&i.Deployments,
+	)
+	return i, err
+}
+
 const updateProjectById = `-- name: UpdateProjectById :exec
 UPDATE public.project
 SET name = $1,

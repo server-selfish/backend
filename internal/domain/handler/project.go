@@ -15,6 +15,7 @@ type (
 		CreateProject(w http.ResponseWriter, r *http.Request)
 		GetAllProjects(w http.ResponseWriter, r *http.Request)
 		GetProjectById(w http.ResponseWriter, r *http.Request)
+		GetProjectByName(w http.ResponseWriter, r *http.Request)
 		UpdateProjectById(w http.ResponseWriter, r *http.Request)
 		DeleteProjectById(w http.ResponseWriter, r *http.Request)
 	}
@@ -29,6 +30,34 @@ func NewProjectHandler(ps service.ProjectService, logger zerolog.Logger) Project
 		ps:     ps,
 		logger: logger,
 	}
+}
+
+// GetProjectByName implements [ProjectHandler].
+func (p *projectHandler) GetProjectByName(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if name == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
+			Message: "unauthorized",
+		})
+		return
+	}
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	project, err := p.ps.GetProjectByName(ctx, name, ui)
+	if err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", project)
 }
 
 // DeleteProjectById implements [ProjectHandler].
@@ -121,7 +150,7 @@ func (p *projectHandler) GetProjectById(w http.ResponseWriter, r *http.Request) 
 		pkg.ReturnError(w, err)
 		return
 	}
-	pkg.ReturnSuccess(w, http.StatusCreated, "fetch success", project)
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", project)
 }
 
 // UpdateProjectById implements [ProjectHandler].

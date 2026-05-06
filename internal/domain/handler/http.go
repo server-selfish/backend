@@ -26,7 +26,8 @@ func RegisterProtectedGithubAppRoutes(r chi.Router, gah GithubAppHandler) {
 func RegisterProjectRoutes(r chi.Router, ph ProjectHandler) {
 	r.Post("/project", ph.CreateProject)
 	r.Get("/project", ph.GetAllProjects)
-	r.Get("/project/{id}", ph.GetProjectById)
+	// r.Get("/project/{id}", ph.GetProjectById)
+	r.Get("/project/{name}", ph.GetProjectByName)
 	r.Patch("/project/{id}", ph.UpdateProjectById)
 	r.Delete("/project/{id}", ph.DeleteProjectById)
 }

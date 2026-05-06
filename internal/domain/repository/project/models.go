@@ -8,6 +8,62 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Container struct {
+	ID                  pgtype.UUID
+	Name                string
+	DeploymentHistoryID int32
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type Deployment struct {
+	ID             pgtype.UUID
+	Name           string
+	GitRemoteUrl   string
+	ProjectID      pgtype.UUID
+	InstallationID int64
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type DeploymentHistory struct {
+	ID                    int32
+	DeploymentID          pgtype.UUID
+	Branch                string
+	CommitID              string
+	CommitMsg             string
+	Version               string
+	ExternalPort          []int32
+	DeploymentTechstackID int32
+	BuildCommand          pgtype.Text
+	BuildFolder           pgtype.Text
+	RunCommand            pgtype.Text
+	IsActive              bool
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+}
+
+type DeploymentTechstack struct {
+	ID                 int32
+	Name               string
+	Version            string
+	DockerBaseImage    string
+	DockerRuntimeImage string
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+type GithubInstallation struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	InstallationID int64
+	AccountLogin   pgtype.Text
+	AccountID      pgtype.Int8
+	TargetType     pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
 type Project struct {
 	ID          pgtype.UUID
 	UserID      pgtype.UUID
