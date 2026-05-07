@@ -12,35 +12,30 @@ hooks = [
 [[repos]]
 repo = "local"
 hooks = [
-  # Format Go files. Commonly you want it to edit files, so this will fail the commit
-  # if gofmt changes anything (you re-stage and re-commit).
   {
     id = "go-fmt",
     name = "gofmt",
     language = "system",
     entry = "gofmt -w",
     files = "\\.go$",
+    pass_filenames= true,
   },
 
-  # Vet packages (not individual files). Because pre-commit/prek will append filenames,
-  # we disable that and run on ./...
   {
     id = "go-vet",
     name = "go vet",
     language = "system",
-    entry = "go vet ./...",
-    pass_filenames = false,
+    entry = "go vet",
+    pass_filenames = true,
     files = "\\.go$",
   },
 
-  # "go lint": golint is deprecated; prefer golangci-lint.
-  # This assumes you have golangci-lint installed on PATH.
   {
     id = "go-lint",
     name = "golangci-lint",
     language = "system",
     entry = "golangci-lint run",
-    pass_filenames = false,
+    pass_filenames = true,
     files = "\\.go$",
   },
 ]
