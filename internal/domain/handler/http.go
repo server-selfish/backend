@@ -41,3 +41,7 @@ func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 	r.Post("/deployment/version", dh.CreateDeployment)
 	r.Delete("/deployment/{id}", dh.DeleteDeploymentByDeploymentId)
 }
+
+func RegisterContainerRoutes(r chi.Router, ch ContainerHandler) {
+	r.Get("/container/status/{name}", ch.GetContainerStatus)
+}

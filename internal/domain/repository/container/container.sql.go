@@ -58,3 +58,36 @@ func (q *Queries) GetActiveDeploymentHistoryContainerByDeploymentId(ctx context.
 	)
 	return i, err
 }
+
+const getContainerByName = `-- name: GetContainerByName :one
+SELECT
+  c.id, c.name, c.deployment_history_id, c.created_at, c.updated_at
+FROM container c
+JOIN deployment_history dh
+  ON dh.id = c.deployment_history_id
+JOIN deployment d
+  ON dh.deployment_id = d.id
+JOIN project p
+  ON d.project_id = p.id
+WHERE
+  p.user_id = $1
+  AND c.name = $2
+`
+
+type GetContainerByNameParams struct {
+	UserID pgtype.UUID
+	Name   string
+}
+
+func (q *Queries) GetContainerByName(ctx context.Context, arg GetContainerByNameParams) (Container, error) {
+	row := q.db.QueryRow(ctx, getContainerByName, arg.UserID, arg.Name)
+	var i Container
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DeploymentHistoryID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
