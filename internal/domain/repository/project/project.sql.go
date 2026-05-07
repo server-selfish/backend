@@ -7,6 +7,7 @@ package project_repository
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -116,13 +117,16 @@ SELECT
   ,p.description AS project_description
   ,p.created_at AS project_created_at
   ,p.updated_at AS project_updated_at
-  ,json_agg(
-    DISTINCT jsonb_build_object(
-      'deployment_name', d.name,
-      'techstack_name', dt.name,
-      'container_name', c.name
-    )
-  ) AS deployments
+  ,COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        'deployment_name', d.name,
+        'techstack_name', dt.name,
+        'container_name', c.name
+      )
+    ) FILTER (WHERE d.name IS NOT NULL),
+    '[]'
+  )::jsonb AS deployments
 FROM
   public.project p
 LEFT JOIN deployment d
@@ -151,7 +155,7 @@ type GetProjectByNameRow struct {
 	ProjectDescription pgtype.Text
 	ProjectCreatedAt   pgtype.Timestamptz
 	ProjectUpdatedAt   pgtype.Timestamptz
-	Deployments        []byte
+	Deployments        json.RawMessage
 }
 
 func (q *Queries) GetProjectByName(ctx context.Context, arg GetProjectByNameParams) (GetProjectByNameRow, error) {
