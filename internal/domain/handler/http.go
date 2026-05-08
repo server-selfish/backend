@@ -28,6 +28,7 @@ func RegisterProjectRoutes(r chi.Router, ph ProjectHandler) {
 	r.Get("/project", ph.GetAllProjects)
 	// r.Get("/project/{id}", ph.GetProjectById)
 	r.Get("/project/{name}", ph.GetProjectByName)
+	r.Get("/project/detail/{name}", ph.GetProjectByNameDetail)
 	r.Patch("/project/{id}", ph.UpdateProjectById)
 	r.Delete("/project/{id}", ph.DeleteProjectById)
 }

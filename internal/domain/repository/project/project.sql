@@ -49,6 +49,47 @@ WHERE
 GROUP BY
   p.name, p.description, p.created_at, p.updated_at;
 
+-- name: GetProjectByNameDetail :one
+SELECT
+  p.name AS project_name
+  ,p.description AS project_description
+  ,p.created_at AS project_created_at
+  ,p.updated_at AS project_updated_at
+  ,COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        'deployment_name', d.name,
+        'deployment_url', d.git_remote_url,
+        'deployment_created_at',d.created_at,
+        'deployment_updated_at',d.updated_at,
+        'deployment_branch',dh.branch,
+        'deployment_version',dh."version",
+        'deployment_commit_msg',dh.commit_msg,
+        'deployment_port',dh.external_port,
+        'deployment_history_created_at',dh.created_at,
+        'techstack_name', dt.name,
+        'container_name', c.name
+      )
+    ) FILTER (WHERE d.name IS NOT NULL),
+    '[]'
+  )::jsonb AS deployments
+FROM
+  public.project p
+LEFT JOIN deployment d
+	ON d.project_id = p.id
+LEFT JOIN deployment_history dh
+	ON dh.deployment_id = d.id
+		AND dh.is_active IS true
+LEFT JOIN deployment_techstack dt
+	ON dt.id = dh.deployment_techstack_id
+LEFT JOIN container c
+	ON c.deployment_history_id = dh.id
+WHERE
+  p.user_id = $1
+  AND p.name ILIKE $2
+GROUP BY
+  p.name, p.description, p.created_at, p.updated_at;
+
 -- name: CreateProject :exec
 INSERT INTO public.project (user_id,name,description)
 VALUES ($1,$2,$3);
