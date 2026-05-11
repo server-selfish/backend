@@ -52,6 +52,7 @@ type (
 		DeploymentPort             []int32 `json:"deployment_port"`
 		DeploymentHistoryCreatedAt string  `json:"deployment_history_created_at"`
 		TechstackName              string  `json:"techstack_name"`
+		TechstackVersion           string  `json:"techstack_version"`
 		ContainerName              string  `json:"container_name"`
 	}
 )

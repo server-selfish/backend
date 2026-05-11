@@ -190,6 +190,7 @@ SELECT
         'deployment_port',dh.external_port,
         'deployment_history_created_at',dh.created_at,
         'techstack_name', dt.name,
+        'techstack_version', dt.version,
         'container_name', c.name
       )
     ) FILTER (WHERE d.name IS NOT NULL),
