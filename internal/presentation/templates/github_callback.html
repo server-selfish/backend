@@ -2,14 +2,7 @@
 <html lang="en">
   <body>
     <script>
-      const data = {
-        type: "GITHUB_AUTH_SUCCESS",
-        data: {
-          access_token: "{{.AccessToken}}",
-        },
-      };
       if (window.opener) {
-        window.opener.postMessage(data, "{{.FrontendBaseURL}}");
         window.close();
       } else {
         document.body.innerText = "You can close this window.";
