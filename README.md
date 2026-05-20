@@ -92,3 +92,6 @@ make cert-gen
 ```bash
 docker compose up -d
 ```
+
+## Tech Debt (performance optimization)
+- [ ] Using bytedance/sonic to change encoding/json
