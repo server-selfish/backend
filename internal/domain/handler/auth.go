@@ -6,14 +6,12 @@ import (
 	"net/http"
 	"strings"
 
-	"golang.org/x/sync/singleflight"
-
 	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
 	"github.com/server-selfish/backend/internal/presentation"
-	"github.com/spf13/viper"
+	"golang.org/x/sync/singleflight"
 )
 
 type (
@@ -31,11 +29,14 @@ type (
 	}
 )
 
-var githubCallbackTmpl = template.Must(
-	template.New("github_callback.html").ParseFS(
-		presentation.PresentationEmbed,
-		"templates/github_callback.html",
-	),
+var (
+	githubCallbackTmpl = template.Must(
+		template.New("github_callback.html").ParseFS(
+			presentation.PresentationEmbed,
+			"templates/github_callback.html",
+		),
+	)
+	refreshGroup singleflight.Group
 )
 
 func NewAuthHandler(as service.AuthService, logger zerolog.Logger) AuthHandler {
@@ -107,18 +108,10 @@ func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := githubCallbackTmpl.Execute(w, struct {
-		AccessToken     string
-		FrontendBaseURL string
-	}{
-		AccessToken:     tokenPair.AccessToken,
-		FrontendBaseURL: viper.GetString("frontend.base.url"),
-	}); err != nil {
+	if err := githubCallbackTmpl.Execute(w, struct{}{}); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }
-
-var refreshGroup singleflight.Group
 
 func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -129,7 +122,6 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		// fallback to cookie if body isn't provided
 		req.RefreshToken = ""
 	}
-
 	// get refresh token from cookie
 	if strings.TrimSpace(req.RefreshToken) == "" {
 		if c, err := r.Cookie("selfish_refresh_token"); err == nil {
