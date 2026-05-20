@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	"github.com/server-selfish/backend/internal/pkg"
 	"github.com/spf13/viper"
+	"github.com/valkey-io/valkey-go"
 )
 
 type (
@@ -66,9 +68,21 @@ type (
 func NewGithubAppService(repo *github_app_repository.Queries, cache cache_infra.ValkeyInfra, gi github_infra.GithubInfra) (GithubAppService, error) {
 	appID := strings.TrimSpace(viper.GetString("auth.github.app.id"))
 	appSlug := strings.TrimSpace(viper.GetString("auth.github.app.slug"))
-	privateKeyPEM := viper.GetString("auth.github.private.key.pem")
-	callbackURI := fmt.Sprintf("%s/github-app/callback", viper.Get("app.base.url"))
+	callbackURI := fmt.Sprintf("%s/api/github-app/callback", viper.Get("app.base.url"))
 	baseInstallURL := "https://github.com/apps"
+	privateKeyPath := viper.GetString("auth.github.private.key.path")
+
+	var privateKeyPEM string
+
+	if privateKeyPath != "" {
+		keyData, err := os.ReadFile(privateKeyPath)
+		if err != nil {
+			log.Fatalf("Failed to read private key file: %v", err)
+		}
+		privateKeyPEM = string(keyData)
+	} else {
+		privateKeyPEM = viper.GetString("auth.github.private.key.pem")
+	}
 
 	if appID == "" || appSlug == "" {
 		return nil, errors.New("github app configuration is incomplete: app_id and app_slug are required")
@@ -221,27 +235,15 @@ func (s *githubAppService) ListInstallations(ctx context.Context, userID string)
 	out := make([]schema.GithubInstallation, 0, len(rows))
 	for _, r := range rows {
 		item := schema.GithubInstallation{
-			ID:             r.ID.String(),
-			UserID:         r.UserID.String(),
+			// ID:             r.ID.String(),
+			// UserID:         r.UserID.String(),
 			InstallationID: r.InstallationID,
-			CreatedAt:      r.CreatedAt.Time,
+			// CreatedAt:      r.CreatedAt.Time.String(),
 		}
 
 		if r.AccountLogin.Valid {
 			v := r.AccountLogin.String
 			item.AccountLogin = &v
-		}
-		if r.AccountID.Valid {
-			v := r.AccountID.Int64
-			item.AccountID = &v
-		}
-		if r.TargetType.Valid {
-			v := r.TargetType.String
-			item.TargetType = &v
-		}
-		if r.UpdatedAt.Valid {
-			v := r.UpdatedAt.Time
-			item.UpdatedAt = &v
 		}
 
 		out = append(out, item)
@@ -273,54 +275,62 @@ func (s *githubAppService) ListInstallationRepositories(ctx context.Context, use
 		return nil, pkg.ErrNotFound
 	}
 
-	tokenRes, err := s.githubInfra.CreateInstallationToken(ctx, installationID)
-	if err != nil {
-		return nil, err
-	}
+	cacheKey := fmt.Sprintf("github:repos:%s:%d", userID, installationID)
+	var repositories []schema.GithubInstallationRepository
+	getCacheErr := s.cache.GetJSON(ctx, cacheKey, &repositories)
 
-	reqURL := fmt.Sprintf("%s/installation/repositories?per_page=100", s.githubAPIBaseURL)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "Bearer "+tokenRes.Token)
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if getCacheErr != nil {
+		if errors.Is(getCacheErr, valkey.Nil) {
+			tokenRes, err := s.githubInfra.CreateInstallationToken(ctx, installationID)
+			if err != nil {
+				return nil, err
+			}
 
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("list installation repositories request failed: %w", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
+			reqURL := fmt.Sprintf("%s/installation/repositories?per_page=100", s.githubAPIBaseURL)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Accept", "application/vnd.github+json")
+			req.Header.Set("Authorization", "Bearer "+tokenRes.Token)
+			req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+			resp, err := s.httpClient.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("list installation repositories request failed: %w", err)
+			}
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					log.Printf("failed to close response body: %v", err)
+				}
+			}()
+
+			if resp.StatusCode >= 400 {
+				return nil, fmt.Errorf("list installation repositories failed: status=%d", resp.StatusCode)
+			}
+
+			var out struct {
+				Repositories []schema.GithubInstallationRepository `json:"repositories"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+				return nil, fmt.Errorf("decode installation repositories response: %w", err)
+			}
+
+			for _, repo := range out.Repositories {
+				repositories = append(repositories, schema.GithubInstallationRepository{
+					ID:       repo.ID,
+					Name:     repo.Name,
+					FullName: repo.FullName,
+				})
+			}
+
+			cacheErr := s.cache.SetJSON(ctx, cacheKey, repositories, 5*time.Minute)
+			if cacheErr != nil {
+				log.Printf("failed to cache repositories: %v", cacheErr)
+			}
+		} else {
+			return nil, err
 		}
-	}()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("list installation repositories failed: status=%d", resp.StatusCode)
 	}
-
-	var out struct {
-		Repositories []schema.GithubInstallationRepository `json:"repositories"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("decode installation repositories response: %w", err)
-	}
-
-	repositories := make([]schema.GithubInstallationRepository, 0, len(out.Repositories))
-	for _, repo := range out.Repositories {
-		repositories = append(repositories, schema.GithubInstallationRepository{
-			ID:            repo.ID,
-			Name:          repo.Name,
-			FullName:      repo.FullName,
-			Private:       repo.Private,
-			HTMLURL:       repo.HTMLURL,
-			CloneURL:      repo.CloneURL,
-			DefaultBranch: repo.DefaultBranch,
-		})
-	}
-
 	return repositories, nil
 }

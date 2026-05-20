@@ -65,8 +65,14 @@ func (h *githubAppHandler) Install(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	pkg.ReturnSuccess(w, http.StatusOK, "link generated", struct {
+		Link string `json:"link"`
+	}{
+		Link: installURL,
+	})
 
-	http.Redirect(w, r, installURL, http.StatusTemporaryRedirect)
+	// TODO: change the redirect to give back url
+	// http.Redirect(w, r, installURL, http.StatusTemporaryRedirect)
 }
 
 // Callback handles GitHub's post-installation redirect by validating callback
@@ -109,9 +115,10 @@ func (h *githubAppHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pkg.WriteJSON(w, http.StatusOK, pkg.Response{
-		Message: "github app installation connected",
-	})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := githubCallbackTmpl.Execute(w, struct{}{}); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
 }
 
 // ListInstallations returns all GitHub App installations associated with the

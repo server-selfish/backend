@@ -101,14 +101,14 @@ type GithubInstallationResponse struct {
 // GithubInstallation represents a persisted GitHub App installation record
 // mapped to an internal user.
 type GithubInstallation struct {
-	ID             string     `json:"id"`
-	UserID         string     `json:"user_id"`
-	InstallationID int64      `json:"installation_id"`
-	AccountLogin   *string    `json:"account_login,omitempty"`
-	AccountID      *int64     `json:"account_id,omitempty"`
-	TargetType     *string    `json:"target_type,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+	// ID             string     `json:"id"`
+	// UserID         string     `json:"user_id"`
+	InstallationID int64   `json:"installation_id"`
+	AccountLogin   *string `json:"account_login,omitempty"`
+	// AccountID      *int64     `json:"account_id,omitempty"`
+	// TargetType     *string    `json:"target_type,omitempty"`
+	// CreatedAt      string  `json:"created_at"`
+	// UpdatedAt      *string `json:"updated_at,omitempty"`
 }
 
 // GithubInstallationRepository represents a repository accessible through
