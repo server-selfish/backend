@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -31,8 +32,19 @@ type (
 
 func NewGithubInfra() GithubInfra {
 	appID := strings.TrimSpace(viper.GetString("auth.github.app.id"))
-	privateKeyPEM := viper.GetString("auth.github.private.key.pem")
+	privateKeyPath := viper.GetString("auth.github.private.key.path")
 
+	var privateKeyPEM string
+
+	if privateKeyPath != "" {
+		keyData, err := os.ReadFile(privateKeyPath)
+		if err != nil {
+			log.Fatalf("Failed to read private key file: %v", err)
+		}
+		privateKeyPEM = string(keyData)
+	} else {
+		privateKeyPEM = viper.GetString("auth.github.private.key.pem")
+	}
 	return &githubInfra{
 		privateKeyPEM:    privateKeyPEM,
 		appID:            appID,
@@ -57,9 +69,8 @@ func (g *githubInfra) CreateInstallationToken(ctx context.Context, installationI
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Authorization", "Bearer "+jwtToken)
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28") // 2026-03-10
 	req.Header.Set("Content-Type", "application/json")
-
 	httpClient := http.Client{Timeout: 20 * time.Second}
 
 	resp, err := httpClient.Do(req)
