@@ -80,6 +80,13 @@ type (
 		CreatedAt         string  `json:"created_at"`
 		UpdatedAt         string  `json:"updated_at"`
 	}
+	GetTechstackList struct {
+		Name []string `json:"name"`
+	}
+	GetTechstackVersion struct {
+		ID      int32  `json:"id"`
+		Version string `json:"version"`
+	}
 )
 
 type (

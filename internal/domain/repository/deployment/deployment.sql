@@ -101,6 +101,19 @@ FROM deployment_techstack dt
 WHERE
   id = $1;
 
+-- name: GetTechstackName :many
+SELECT DISTINCT ON (LOWER(name))
+  name
+FROM deployment_techstack;
+
+-- name: GetTechstackVersionByName :many
+SELECT
+  dt.id AS id,
+  dt.VERSION AS version
+FROM deployment_techstack dt
+WHERE
+  LOWER(dt."name") = $1;
+
 -- name: SetActiveDeploymentHistoryNonActiveByDeploymentId :exec
 UPDATE deployment_history dh
 SET is_active = false

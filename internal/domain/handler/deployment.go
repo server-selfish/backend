@@ -18,6 +18,8 @@ type (
 		GetDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
 		GetActiveDeploymenByDeploymentId(w http.ResponseWriter, r *http.Request)
 		GetHistoryDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
+		GetTechstackName(w http.ResponseWriter, r *http.Request)
+		GetTechstackVersionByName(w http.ResponseWriter, r *http.Request)
 		CreateDeployment(w http.ResponseWriter, r *http.Request)
 		CreateNewDeploymentVersionByDeploymentId(w http.ResponseWriter, r *http.Request)
 		DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
@@ -31,6 +33,33 @@ func NewDeploymentHandler(ds service.DeploymentService) DeploymentHandler {
 	return &deploymentHandler{
 		ds: ds,
 	}
+}
+
+// GetTechstackName implements [DeploymentHandler].
+func (d *deploymentHandler) GetTechstackName(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tl, err := d.ds.GetTechstackName(ctx)
+	if err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch techstack sucess", tl)
+}
+
+// GetTechstackVersionByName implements [DeploymentHandler].
+func (d *deploymentHandler) GetTechstackVersionByName(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tn := chi.URLParam(r, "techstack_name")
+	if tn == "" {
+		pkg.ReturnError(w, pkg.ErrBadRequest)
+		return
+	}
+	vl, err := d.ds.GetTechstackVersionByName(ctx, tn)
+	if err != nil {
+		pkg.ReturnError(w, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch version success", vl)
 }
 
 // CreateNewDeploymentVersion implements [DeploymentHandler].

@@ -31,6 +31,8 @@ type (
 		GetDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetSingleDeploymentData, error)
 		GetActiveDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetActiveDeploymentHistory, error)
 		GetHistoryDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) ([]schema.GetHistoryDeploymentHistory, error)
+		GetTechstackName(ctx context.Context) (schema.GetTechstackList, error)
+		GetTechstackVersionByName(ctx context.Context, techstackName string) ([]schema.GetTechstackVersion, error)
 		CreateDeployment(ctx context.Context, params deployment_repository.CreateDeploymentParams) error
 		CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, installationID int64, params deployment_repository.CreateDeploymentHistoryParams) error
 		buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error
@@ -52,6 +54,34 @@ func NewDeploymentService(dr *deployment_repository.Queries, cr *container_repos
 		dc: dc,
 		gi: gi,
 	}
+}
+
+// GetTechstackName implements [DeploymentService].
+func (d *deploymentService) GetTechstackName(ctx context.Context) (schema.GetTechstackList, error) {
+	tn, err := d.dr.GetTechstackName(ctx)
+	if err != nil {
+		return schema.GetTechstackList{}, err
+	}
+	return schema.GetTechstackList{
+		Name: tn,
+	}, nil
+}
+
+// GetTechstackVersionByName implements [DeploymentService].
+func (d *deploymentService) GetTechstackVersionByName(ctx context.Context, techstackName string) ([]schema.GetTechstackVersion, error) {
+	vl, err := d.dr.GetTechstackVersionByName(ctx, techstackName)
+	if err != nil {
+		return []schema.GetTechstackVersion{}, err
+	}
+
+	resp := make([]schema.GetTechstackVersion, 0, len(vl))
+	for _, v := range vl {
+		resp = append(resp, schema.GetTechstackVersion{
+			ID:      v.ID,
+			Version: v.Version,
+		})
+	}
+	return resp, nil
 }
 
 // CreateNewDeploymentVersion implements [DeploymentService].

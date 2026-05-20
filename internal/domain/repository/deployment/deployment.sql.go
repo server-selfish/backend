@@ -389,6 +389,66 @@ func (q *Queries) GetTechstackByTechstackId(ctx context.Context, id int32) (Depl
 	return i, err
 }
 
+const getTechstackName = `-- name: GetTechstackName :many
+SELECT DISTINCT ON (LOWER(name))
+  name
+FROM deployment_techstack
+`
+
+func (q *Queries) GetTechstackName(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, getTechstackName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTechstackVersionByName = `-- name: GetTechstackVersionByName :many
+SELECT
+  dt.id AS id,
+  dt.VERSION AS version
+FROM deployment_techstack dt
+WHERE
+  LOWER (dt."name") = $1
+`
+
+type GetTechstackVersionByNameRow struct {
+	ID      int32
+	Version string
+}
+
+func (q *Queries) GetTechstackVersionByName(ctx context.Context, name string) ([]GetTechstackVersionByNameRow, error) {
+	rows, err := q.db.Query(ctx, getTechstackVersionByName, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTechstackVersionByNameRow
+	for rows.Next() {
+		var i GetTechstackVersionByNameRow
+		if err := rows.Scan(&i.ID, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setActiveDeploymentHistoryNonActiveByDeploymentId = `-- name: SetActiveDeploymentHistoryNonActiveByDeploymentId :exec
 UPDATE deployment_history dh
 SET is_active = false
