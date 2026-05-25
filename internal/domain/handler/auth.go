@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"html/template"
 	"net/http"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 	"github.com/server-selfish/backend/internal/presentation"
 	"golang.org/x/sync/singleflight"
 )
@@ -25,7 +25,7 @@ type (
 
 	authHandler struct {
 		as     service.AuthService
-		logger zerolog.Logger
+		logger *zerolog.Logger
 	}
 )
 
@@ -42,7 +42,7 @@ var (
 func NewAuthHandler(as service.AuthService, logger zerolog.Logger) AuthHandler {
 	return &authHandler{
 		as:     as,
-		logger: logger,
+		logger: &logger,
 	}
 }
 
@@ -52,35 +52,25 @@ func (h *authHandler) GithubLogin(w http.ResponseWriter, r *http.Request) {
 	loginURL, err := h.as.GetGithubLoginURL(ctx)
 	if err != nil {
 		h.logger.Error().Msg(err.Error())
-		pkg.WriteJSON(w, http.StatusInternalServerError, schema.AuthErrorResponse{
-			Message: "failed to build github login url",
-			Error:   err.Error(),
-		})
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
-
 	http.Redirect(w, r, loginURL, http.StatusTemporaryRedirect)
 }
 
 func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		pkg.WriteJSON(w, http.StatusBadRequest, schema.AuthErrorResponse{
-			Message: "invalid callback params",
-			Error:   "missing code ",
-		})
+		h.logger.Error().Msg(defined_error.ErrMissingCodeInQueryParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrInvalidCallbackParams)
 		return
 	}
 
 	tokenPair, err := h.as.HandleGithubCallback(ctx, code, r.UserAgent(), pkg.ReadIP(r))
 	if err != nil {
 		h.logger.Error().Msg(err.Error())
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "github authentication failed",
-			Error:   err.Error(),
-		})
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrGithubAuthenticationFailed)
 		return
 	}
 
@@ -109,20 +99,18 @@ func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := githubCallbackTmpl.Execute(w, struct{}{}); err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		h.logger.Error().Err(err).Msg(defined_error.ErrExecuteTemplateError.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 	}
 }
 
 func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var req schema.RefreshTokenRequest
-	// get refresh token from body
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// fallback to cookie if body isn't provided
+	req, _, _, ok := pkg.DecodeAndValidateBody[schema.RefreshTokenRequest](w, r, h.logger)
+	if !ok {
 		req.RefreshToken = ""
 	}
-	// get refresh token from cookie
 	if strings.TrimSpace(req.RefreshToken) == "" {
 		if c, err := r.Cookie("selfish_refresh_token"); err == nil {
 			req.RefreshToken = c.Value
@@ -130,12 +118,10 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.TrimSpace(req.RefreshToken) == "" {
-		pkg.WriteJSON(w, http.StatusBadRequest, schema.AuthErrorResponse{
-			Message: "refresh token is required",
-		})
+		h.logger.Error().Msg(defined_error.ErrRefreshTokenRequired.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrRefreshTokenRequired)
 		return
 	}
-
 	// get the new access token inside token pair
 	v, err, _ := refreshGroup.Do(req.RefreshToken, func() (any, error) {
 		return h.as.RefreshAccessToken(ctx, req.RefreshToken, r.UserAgent(), pkg.ReadIP(r))
@@ -143,20 +129,14 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		h.logger.Error().Msg(err.Error())
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "failed to refresh token",
-			Error:   err.Error(),
-		})
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrFailedToRefreshToken)
 		return
 	}
 
 	tokenPair, ok := v.(schema.AuthTokenPair)
 	if !ok {
-		// handle the error, e.g.:
-		pkg.WriteJSON(w, http.StatusInternalServerError, schema.AuthErrorResponse{
-			Message: "internal error",
-			Error:   "failed to cast token pair",
-		})
+		h.logger.Error().Msg(defined_error.ErrFailedCastTokenPairs.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrFailedCastTokenPairs)
 		return
 	}
 
@@ -184,61 +164,40 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 			MaxAge:   int(tokenPair.AccessTokenExpiresIn),
 		})
 	}
-
-	// send back response with access token
-	pkg.WriteJSON(w, http.StatusOK, schema.RefreshTokenResponse{
-		Message: "token refreshed",
-		Data: schema.AuthTokenPair{
-			AccessToken:           tokenPair.AccessToken,
-			AccessTokenExpiresIn:  tokenPair.AccessTokenExpiresIn,
-			RefreshToken:          tokenPair.RefreshToken,
-			RefreshTokenExpiresIn: tokenPair.RefreshTokenExpiresIn,
-			TokenType:             tokenPair.TokenType,
-		},
-	})
+	pkg.ReturnSuccess(w, http.StatusOK, "token refreshed", nil)
 }
 
 func (h *authHandler) Me(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// get user id from context (ingested from middleware)
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
+		h.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
 	// get user profile
-	me, err := h.as.GetMe(ctx, userID)
+	me, err := h.as.GetMe(ctx, ui)
 	if err != nil {
 		h.logger.Error().Msg(err.Error())
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "failed to resolve user",
-			Error:   err.Error(),
-		})
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrFailedToGetUser)
 		return
 	}
-
-	pkg.WriteJSON(w, http.StatusOK, schema.MeResponse{
-		Message: "ok",
-		Data: schema.UserMeData{
-			ID:             me.ID,
-			Provider:       me.Provider,
-			ProviderUserID: me.ProviderUserID,
-			Username:       me.Username,
-			Email:          me.Email,
-			AvatarURL:      me.AvatarURL,
-		},
-	})
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch user success", me)
 }
 
 func (h *authHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var req schema.RefreshTokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, _, _, ok := pkg.DecodeAndValidateBody[schema.RefreshTokenRequest](w, r, h.logger)
+	if !ok {
 		req.RefreshToken = ""
 	}
 	if strings.TrimSpace(req.RefreshToken) == "" {
@@ -247,11 +206,11 @@ func (h *authHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if strings.TrimSpace(req.RefreshToken) != "" {
-		// logout service call
-		_ = h.as.Logout(ctx, req.RefreshToken)
+		if err := h.as.Logout(ctx, req.RefreshToken); err != nil {
+			h.logger.Error().Msg(err.Error())
+		}
 	}
 
-	// clear cookie regardless of service result
 	http.SetCookie(w, &http.Cookie{
 		Name:     "selfish_refresh_token",
 		Value:    "",
@@ -272,7 +231,5 @@ func (h *authHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 	})
 
-	pkg.WriteJSON(w, http.StatusOK, schema.LogoutResponse{
-		Message: "logout success",
-	})
+	pkg.ReturnSuccess(w, http.StatusOK, "logout success", nil)
 }

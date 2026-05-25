@@ -8,11 +8,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/pkg"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 	"github.com/spf13/viper"
 )
 
@@ -24,13 +27,14 @@ type (
 		FetchInstallation(ctx context.Context, installationID int64) (schema.GithubInstallationResponse, error)
 	}
 	githubInfra struct {
+		logger           *zerolog.Logger
 		githubAPIBaseURL string
 		appID            string
 		privateKeyPEM    string
 	}
 )
 
-func NewGithubInfra() GithubInfra {
+func NewGithubInfra(logger zerolog.Logger) GithubInfra {
 	appID := strings.TrimSpace(viper.GetString("auth.github.app.id"))
 	privateKeyPath := viper.GetString("auth.github.private.key.path")
 
@@ -39,13 +43,15 @@ func NewGithubInfra() GithubInfra {
 	if privateKeyPath != "" {
 		keyData, err := os.ReadFile(privateKeyPath)
 		if err != nil {
-			log.Fatalf("Failed to read private key file: %v", err)
+			logger.Fatal().Err(err).Msg("failed to read private key file")
 		}
 		privateKeyPEM = string(keyData)
-	} else {
-		privateKeyPEM = viper.GetString("auth.github.private.key.pem")
+	}
+	if strings.TrimSpace(privateKeyPEM) == "" {
+		logger.Fatal().Msg(defined_error.ErrMissingGithubAppPrivateKey.Error())
 	}
 	return &githubInfra{
+		logger:           &logger,
 		privateKeyPEM:    privateKeyPEM,
 		appID:            appID,
 		githubAPIBaseURL: "https://api.github.com",
@@ -53,18 +59,16 @@ func NewGithubInfra() GithubInfra {
 }
 
 func (g *githubInfra) CreateInstallationToken(ctx context.Context, installationID int64) (schema.GithubAppInstallationToken, error) {
-	if installationID <= 0 {
-		return schema.GithubAppInstallationToken{}, errors.New("installation id is required")
-	}
-
 	jwtToken, err := pkg.GenerateAppJWTFromPEM(g.privateKeyPEM, g.appID)
 	if err != nil {
+		g.logger.Error().Err(err).Msg("error generate app jwt")
 		return schema.GithubAppInstallationToken{}, err
 	}
 
 	reqURL := fmt.Sprintf("%s/app/installations/%d/access_tokens", g.githubAPIBaseURL, installationID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, strings.NewReader(`{}`))
 	if err != nil {
+		g.logger.Error().Err(err).Msg("error create request with context instance")
 		return schema.GithubAppInstallationToken{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -75,7 +79,8 @@ func (g *githubInfra) CreateInstallationToken(ctx context.Context, installationI
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return schema.GithubAppInstallationToken{}, fmt.Errorf("create installation token request failed: %w", err)
+		g.logger.Error().Err(err).Msg("create installation token request failed")
+		return schema.GithubAppInstallationToken{}, err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -84,6 +89,7 @@ func (g *githubInfra) CreateInstallationToken(ctx context.Context, installationI
 	}()
 
 	if resp.StatusCode >= 400 {
+		g.logger.Error().Str("resp", strconv.Itoa(resp.StatusCode)).Msg("http request got client error")
 		return schema.GithubAppInstallationToken{}, fmt.Errorf("create installation token failed: status=%d", resp.StatusCode)
 	}
 
@@ -94,9 +100,11 @@ func (g *githubInfra) CreateInstallationToken(ctx context.Context, installationI
 		RepositorySelection string    `json:"repository_selection"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return schema.GithubAppInstallationToken{}, fmt.Errorf("decode installation token response: %w", err)
+		g.logger.Error().Err(err).Msg("decode installation token response error")
+		return schema.GithubAppInstallationToken{}, err
 	}
 	if strings.TrimSpace(out.Token) == "" {
+		g.logger.Error().Msg("empty installation token")
 		return schema.GithubAppInstallationToken{}, errors.New("empty installation token")
 	}
 
@@ -111,12 +119,14 @@ func (g *githubInfra) CreateInstallationToken(ctx context.Context, installationI
 func (g *githubInfra) FetchInstallation(ctx context.Context, installationID int64) (schema.GithubInstallationResponse, error) {
 	jwtToken, err := pkg.GenerateAppJWTFromPEM(g.privateKeyPEM, g.appID)
 	if err != nil {
+		g.logger.Error().Err(err).Msg("generate app jwt from pem error")
 		return schema.GithubInstallationResponse{}, err
 	}
 
 	reqURL := fmt.Sprintf("%s/app/installations/%d", g.githubAPIBaseURL, installationID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
+		g.logger.Error().Err(err).Msg("failed create request with context")
 		return schema.GithubInstallationResponse{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -126,7 +136,8 @@ func (g *githubInfra) FetchInstallation(ctx context.Context, installationID int6
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return schema.GithubInstallationResponse{}, fmt.Errorf("fetch installation request failed: %w", err)
+		g.logger.Error().Err(err).Msg("fetch installation request failed")
+		return schema.GithubInstallationResponse{}, err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -135,12 +146,14 @@ func (g *githubInfra) FetchInstallation(ctx context.Context, installationID int6
 	}()
 
 	if resp.StatusCode >= 400 {
+		g.logger.Error().Str("code", strconv.Itoa(resp.StatusCode)).Msg("http request got client error")
 		return schema.GithubInstallationResponse{}, fmt.Errorf("fetch installation failed: status=%d", resp.StatusCode)
 	}
 
 	var out schema.GithubInstallationResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return schema.GithubInstallationResponse{}, fmt.Errorf("decode installation response: %w", err)
+		g.logger.Error().Err(err).Msg("decode installation response error")
+		return schema.GithubInstallationResponse{}, err
 	}
 
 	return out, nil

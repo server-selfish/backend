@@ -1,15 +1,18 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/rs/zerolog"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 )
 
 type (
@@ -25,13 +28,15 @@ type (
 		DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
 	}
 	deploymentHandler struct {
-		ds service.DeploymentService
+		ds     service.DeploymentService
+		logger *zerolog.Logger
 	}
 )
 
-func NewDeploymentHandler(ds service.DeploymentService) DeploymentHandler {
+func NewDeploymentHandler(ds service.DeploymentService, logger zerolog.Logger) DeploymentHandler {
 	return &deploymentHandler{
-		ds: ds,
+		ds:     ds,
+		logger: &logger,
 	}
 }
 
@@ -40,7 +45,8 @@ func (d *deploymentHandler) GetTechstackName(w http.ResponseWriter, r *http.Requ
 	ctx := r.Context()
 	tl, err := d.ds.GetTechstackName(ctx)
 	if err != nil {
-		pkg.ReturnError(w, err)
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch techstack sucess", tl)
@@ -51,12 +57,14 @@ func (d *deploymentHandler) GetTechstackVersionByName(w http.ResponseWriter, r *
 	ctx := r.Context()
 	tn := chi.URLParam(r, "techstack_name")
 	if tn == "" {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingTechstackNameInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingTechstackNameInParams)
 		return
 	}
 	vl, err := d.ds.GetTechstackVersionByName(ctx, tn)
 	if err != nil {
-		pkg.ReturnError(w, err)
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch version success", vl)
@@ -67,28 +75,33 @@ func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.Resp
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 	ui, err := pkg.StringToPgUUID(userID)
 	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
-	req, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentHistoryParams](w, r)
+	req, sc, err, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentHistoryParams](w, r, d.logger)
 	if !ok {
+		pkg.ReturnError(w, sc, err)
 		return
 	}
-	id, err := pkg.StringToPgUUID(req.DeploymentID)
-	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
-		return
-	}
+
 	ii, err := strconv.ParseInt(req.InstallationID, 10, 64)
 	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringIntTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrInvalidInstallationId)
+		return
+	}
+
+	id, err := pkg.StringToPgUUID(req.DeploymentID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	if err := d.ds.CreateNewDeploymentVersionByDeploymentId(ctx, ui, ii, deployment_repository.CreateDeploymentHistoryParams{
@@ -100,7 +113,8 @@ func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.Resp
 		BuildFolder:           pgtype.Text{String: req.BuildFolder},
 		RunCommand:            pgtype.Text{String: req.RunCommand},
 	}); err != nil {
-		pkg.ReturnError(w, err)
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "new version deployed", nil)
@@ -108,14 +122,16 @@ func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.Resp
 
 // CreateDeployment implements [DeploymentHandler].
 func (d *deploymentHandler) CreateDeployment(w http.ResponseWriter, r *http.Request) {
-	req, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentParams](w, r)
+	req, sc, err, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentParams](w, r, d.logger)
 	if !ok {
+		pkg.ReturnError(w, sc, err)
 		return
 	}
 	ctx := r.Context()
 	id, err := pkg.StringToPgUUID(req.ProjectID)
 	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	if err := d.ds.CreateDeployment(ctx, deployment_repository.CreateDeploymentParams{
@@ -124,7 +140,8 @@ func (d *deploymentHandler) CreateDeployment(w http.ResponseWriter, r *http.Requ
 		GitRemoteUrl:   req.GitRemoteUrl,
 		InstallationID: req.InstallationID,
 	}); err != nil {
-		pkg.ReturnError(w, err)
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "deployment created", nil)
@@ -136,29 +153,34 @@ func (d *deploymentHandler) DeleteDeploymentByDeploymentId(w http.ResponseWriter
 
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
-		return
-	}
-	ui, err := pkg.StringToPgUUID(userID)
-	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingIdInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingIdInParams)
 		return
 	}
+
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+
 	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	if err := d.ds.DeleteDeploymentByDeploymentId(ctx, ui, id); err != nil {
-		pkg.ReturnError(w, err)
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "deployment deleted", nil)
@@ -169,30 +191,36 @@ func (d *deploymentHandler) GetHistoryDeploymentByDeploymentId(w http.ResponseWr
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
-		return
-	}
-	ui, err := pkg.StringToPgUUID(userID)
-	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingIdInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingIdInParams)
 		return
 	}
+
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+
 	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
+
 	deployments, err := d.ds.GetHistoryDeploymentByDeploymentId(ctx, ui, id)
 	if err != nil {
-		pkg.ReturnError(w, err)
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", deployments)
@@ -203,31 +231,41 @@ func (d *deploymentHandler) GetActiveDeploymenByDeploymentId(w http.ResponseWrit
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
-		return
-	}
-	ui, err := pkg.StringToPgUUID(userID)
-	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingIdInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingIdInParams)
 		return
 	}
+
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+
 	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 
 	deployment, err := d.ds.GetActiveDeploymentByDeploymentId(ctx, ui, id)
 	if err != nil {
-		pkg.ReturnError(w, err)
+		d.logger.Error().Msg(err.Error())
+		switch {
+		case errors.Is(err, defined_error.ErrActiveDeploymentNotFound):
+			pkg.ReturnError(w, http.StatusNotFound, err)
+		default:
+			pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		}
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", deployment)
@@ -238,31 +276,40 @@ func (d *deploymentHandler) GetDeploymentByDeploymentId(w http.ResponseWriter, r
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
-		return
-	}
-
-	ui, err := pkg.StringToPgUUID(userID)
-	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingIdInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingIdInParams)
 		return
 	}
+
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+
 	id, err := pkg.StringToPgUUID(idStr)
 	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	deployment, err := d.ds.GetDeploymentByDeploymentId(ctx, ui, id)
 	if err != nil {
-		pkg.ReturnError(w, err)
+		d.logger.Error().Msg(err.Error())
+		switch {
+		case errors.Is(err, defined_error.ErrDeploymentNotFound):
+			pkg.ReturnError(w, http.StatusNotFound, err)
+		default:
+			pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		}
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", deployment)
@@ -273,32 +320,36 @@ func (d *deploymentHandler) GetDeploymentsByProjectId(w http.ResponseWriter, r *
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
-		return
-	}
-
-	ui, err := pkg.StringToPgUUID(userID)
-	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 
 	q := r.URL.Query()
 	projectId := q.Get("project_id")
 	if projectId == "" {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Msg(defined_error.ErrMissinProjectId.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissinProjectId)
 		return
 	}
+
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+
 	id, err := pkg.StringToPgUUID(projectId)
 	if err != nil {
-		pkg.ReturnError(w, pkg.ErrBadRequest)
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	deployments, err := d.ds.GetDeploymentsByProjectId(ctx, ui, id)
 	if err != nil {
-		pkg.ReturnError(w, err)
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", deployments)

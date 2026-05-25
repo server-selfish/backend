@@ -2,47 +2,30 @@ package pkg
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/rs/zerolog"
 )
 
 var validate = validator.New()
 
-func DecodeAndValidateBody[T any](w http.ResponseWriter, r *http.Request) (T, bool) {
+func DecodeAndValidateBody[T any](w http.ResponseWriter, r *http.Request, logger *zerolog.Logger) (T, int, error, bool) {
 	var req T
 
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(&req); err != nil {
-		WriteJSON(w, http.StatusBadRequest, Response{Message: "invalid request body"})
-		return req, false
+		logger.Error().Err(err).Msg("decode body request error")
+		return req, http.StatusBadRequest, errors.New("invalid body request"), false
 	}
 
 	if err := validate.Struct(req); err != nil {
-		WriteJSON(w, http.StatusBadRequest, Response{Message: err.Error()})
-		return req, false
+		logger.Error().Err(err).Msg("validation body requst error")
+		return req, http.StatusBadRequest, err, false
 	}
 
-	return req, true
+	return req, 0, nil, true
 }
-
-// func DecodeAndValidate[T any](w http.ResponseWriter, r *http.Request) (T, bool) {
-// 	var req T
-
-// 	decoder := json.NewDecoder(r.Body)
-// 	decoder.DisallowUnknownFields()
-
-// 	if err := decoder.Decode(&req); err != nil {
-// 		WriteJSON(w, http.StatusBadRequest, Response{Message: "invalid request body"})
-// 		return req, false
-// 	}
-
-// 	if err := validate.Struct(req); err != nil {
-// 		WriteJSON(w, http.StatusBadRequest, Response{Message: err.Error()})
-// 		return req, false
-// 	}
-
-// 	return req, true
-// }

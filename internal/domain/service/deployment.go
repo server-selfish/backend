@@ -23,6 +23,7 @@ import (
 	"github.com/server-selfish/backend/internal/domain/schema"
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	"github.com/server-selfish/backend/internal/pkg"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 )
 
 type (
@@ -56,38 +57,10 @@ func NewDeploymentService(dr *deployment_repository.Queries, cr *container_repos
 	}
 }
 
-// GetTechstackName implements [DeploymentService].
-func (d *deploymentService) GetTechstackName(ctx context.Context) (schema.GetTechstackList, error) {
-	tn, err := d.dr.GetTechstackName(ctx)
-	if err != nil {
-		return schema.GetTechstackList{}, err
-	}
-	return schema.GetTechstackList{
-		Name: tn,
-	}, nil
-}
-
-// GetTechstackVersionByName implements [DeploymentService].
-func (d *deploymentService) GetTechstackVersionByName(ctx context.Context, techstackName string) ([]schema.GetTechstackVersion, error) {
-	vl, err := d.dr.GetTechstackVersionByName(ctx, techstackName)
-	if err != nil {
-		return []schema.GetTechstackVersion{}, err
-	}
-
-	resp := make([]schema.GetTechstackVersion, 0, len(vl))
-	for _, v := range vl {
-		resp = append(resp, schema.GetTechstackVersion{
-			ID:      v.ID,
-			Version: v.Version,
-		})
-	}
-	return resp, nil
-}
-
 // CreateNewDeploymentVersion implements [DeploymentService].
 func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, installationID int64, params deployment_repository.CreateDeploymentHistoryParams) error {
 	activeContainer, err := d.cr.GetActiveDeploymentHistoryContainerByDeploymentId(ctx, container_repository.GetActiveDeploymentHistoryContainerByDeploymentIdParams{
-		UserID:       pgtype.UUID{},
+		UserID:       userID,
 		DeploymentID: params.DeploymentID,
 	})
 	if err != nil {
@@ -313,6 +286,34 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 	return nil
 }
 
+// GetTechstackName implements [DeploymentService].
+func (d *deploymentService) GetTechstackName(ctx context.Context) (schema.GetTechstackList, error) {
+	tn, err := d.dr.GetTechstackName(ctx)
+	if err != nil {
+		return schema.GetTechstackList{}, err
+	}
+	return schema.GetTechstackList{
+		Name: tn,
+	}, nil
+}
+
+// GetTechstackVersionByName implements [DeploymentService].
+func (d *deploymentService) GetTechstackVersionByName(ctx context.Context, techstackName string) ([]schema.GetTechstackVersion, error) {
+	vl, err := d.dr.GetTechstackVersionByName(ctx, techstackName)
+	if err != nil {
+		return []schema.GetTechstackVersion{}, err
+	}
+
+	resp := make([]schema.GetTechstackVersion, 0, len(vl))
+	for _, v := range vl {
+		resp = append(resp, schema.GetTechstackVersion{
+			ID:      v.ID,
+			Version: v.Version,
+		})
+	}
+	return resp, nil
+}
+
 // DeleteDeploymentByDeploymentId implements [DeploymentService].
 func (d *deploymentService) DeleteDeploymentByDeploymentId(ctx context.Context, userID, deploymentId pgtype.UUID) error {
 	if err := d.dr.DeleteDeploymentByDeploymentId(ctx, deployment_repository.DeleteDeploymentByDeploymentIdParams{
@@ -339,9 +340,6 @@ func (d *deploymentService) GetHistoryDeploymentByDeploymentId(ctx context.Conte
 		DeploymentID: deploymentId,
 	})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, pkg.ErrNotFound
-		}
 		return nil, err
 	}
 	var res []schema.GetHistoryDeploymentHistory
@@ -368,7 +366,7 @@ func (d *deploymentService) GetActiveDeploymentByDeploymentId(ctx context.Contex
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return schema.GetActiveDeploymentHistory{}, pkg.ErrNotFound
+			return schema.GetActiveDeploymentHistory{}, defined_error.ErrActiveDeploymentNotFound
 		}
 		return schema.GetActiveDeploymentHistory{}, err
 	}
@@ -395,7 +393,7 @@ func (d *deploymentService) GetDeploymentByDeploymentId(ctx context.Context, use
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return schema.GetSingleDeploymentData{}, pkg.ErrNotFound
+			return schema.GetSingleDeploymentData{}, defined_error.ErrDeploymentNotFound
 		}
 		return schema.GetSingleDeploymentData{}, err
 	}
@@ -418,9 +416,9 @@ func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, userI
 	if err != nil {
 		return nil, err
 	}
-	if len(deployments) == 0 {
-		return nil, pkg.ErrNotFound
-	}
+	// if len(deployments) == 0 {
+	// 	return nil, pkg.ErrNotFound
+	// }
 	var res []schema.GetDeploymentData
 	for _, dep := range deployments {
 		res = append(res, schema.GetDeploymentData{

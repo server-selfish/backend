@@ -8,13 +8,15 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rs/zerolog"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
+	"github.com/spf13/viper"
 )
 
 type TokenManager struct {
@@ -32,38 +34,44 @@ type AccessTokenClaims struct {
 	jwt.RegisteredClaims
 }
 
-func NewTokenManager(secret, issuer string, accessTTL, refreshTTL time.Duration) (*TokenManager, error) {
-	if secret == "" {
-		return nil, errors.New("jwt secret is required")
+func NewTokenManager(logger zerolog.Logger) (*TokenManager, error) {
+	jwtSecret := viper.GetString("auth.jwt.secret")
+	jwtIssuer := viper.GetString("auth.jwt.issuer")
+	accessMinutes := viper.GetInt("auth.jwt.access_token_ttl_minutes")
+	refreshDays := viper.GetInt("auth.jwt.refresh_token_ttl_days")
+
+	if accessMinutes <= 0 {
+		accessMinutes = 15
 	}
-	if issuer == "" {
-		issuer = "selfish-backend"
+	if refreshDays <= 0 {
+		refreshDays = 7
 	}
-	if accessTTL <= 0 {
-		return nil, errors.New("access token ttl must be greater than zero")
+
+	if jwtSecret == "" {
+		logger.Fatal().Msg("jwt secret is required")
 	}
-	if refreshTTL <= 0 {
-		return nil, errors.New("refresh token ttl must be greater than zero")
+	if jwtIssuer == "" {
+		jwtIssuer = "selfish-backend"
 	}
 
 	return &TokenManager{
-		secret:        []byte(secret),
-		issuer:        issuer,
-		accessTTL:     accessTTL,
-		refreshTTL:    refreshTTL,
+		secret:        []byte(jwtSecret),
+		issuer:        jwtIssuer,
+		accessTTL:     time.Duration(accessMinutes) * time.Minute,
+		refreshTTL:    time.Duration(refreshDays) * 24 * time.Hour,
 		refreshLength: 64,
 	}, nil
 }
 
 func (tm *TokenManager) GenerateAccessToken(userID, sessionID, provider string) (string, time.Time, error) {
 	if userID == "" {
-		return "", time.Time{}, errors.New("user id is required")
+		return "", time.Time{}, defined_error.ErrMissingUserId
 	}
 	if sessionID == "" {
-		return "", time.Time{}, errors.New("session id is required")
+		return "", time.Time{}, defined_error.ErrMissingSessionId
 	}
 	if provider == "" {
-		return "", time.Time{}, errors.New("provider is required")
+		return "", time.Time{}, defined_error.ErrMissingProvider
 	}
 
 	now := time.Now().UTC()
@@ -85,33 +93,29 @@ func (tm *TokenManager) GenerateAccessToken(userID, sessionID, provider string) 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString(tm.secret)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("sign access token: %w", err)
+		return "", time.Time{}, fmt.Errorf("%s-%w", defined_error.ErrSignAccessToken.Error(), err)
 	}
 
 	return signed, exp, nil
 }
 
 func (tm *TokenManager) ParseAccessToken(tokenString string) (*AccessTokenClaims, error) {
-	if tokenString == "" {
-		return nil, errors.New("token is required")
-	}
-
 	claims := &AccessTokenClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
 		if t.Method == nil || t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			return nil, fmt.Errorf("%s: %v", defined_error.ErrUnexpectedSigningMethod.Error(), t.Header["alg"])
 		}
 		return tm.secret, nil
 	}, jwt.WithIssuer(tm.issuer), jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
-		return nil, fmt.Errorf("parse access token: %w", err)
+		return nil, fmt.Errorf("%s: %w", defined_error.ErrParseAccessToken.Error(), err)
 	}
 	if !token.Valid {
-		return nil, errors.New("invalid access token")
+		return nil, defined_error.ErrInvalidAccesstoken
 	}
 
 	if claims.UserID == "" || claims.SessionID == "" || claims.Provider == "" {
-		return nil, errors.New("invalid token payload")
+		return nil, defined_error.ErrInvaliTokenPayload
 	}
 
 	return claims, nil
@@ -120,7 +124,7 @@ func (tm *TokenManager) ParseAccessToken(tokenString string) (*AccessTokenClaims
 func (tm *TokenManager) NewRefreshToken() (raw string, tokenHash string, expiresAt time.Time, err error) {
 	buf := make([]byte, tm.refreshLength)
 	if _, err = rand.Read(buf); err != nil {
-		return "", "", time.Time{}, fmt.Errorf("generate refresh token: %w", err)
+		return "", "", time.Time{}, fmt.Errorf("%s: %w", defined_error.ErrGenerateRefreshToken.Error(), err)
 	}
 
 	// URL-safe opaque token
@@ -138,7 +142,7 @@ func HashToken(token string) string {
 func GenerateAppJWTFromPEM(pkPEM, appId string) (string, error) {
 	keyPEM := strings.TrimSpace(pkPEM)
 	if keyPEM == "" {
-		return "", fmt.Errorf("read private key pem")
+		return "", defined_error.ErrMissingPrivateKey
 	}
 	privateKey, err := parseRSAPrivateKeyFromPEM(keyPEM)
 	if err != nil {
@@ -150,7 +154,7 @@ func GenerateAppJWTFromPEM(pkPEM, appId string) (string, error) {
 
 	appIDInt, err := strconv.ParseInt(appId, 10, 64)
 	if err != nil {
-		return "", errors.New("invalid github app id")
+		return "", defined_error.ErrInvalidGithubAppID
 	}
 
 	payloadMap := map[string]any{
@@ -160,7 +164,7 @@ func GenerateAppJWTFromPEM(pkPEM, appId string) (string, error) {
 	}
 	payloadBytes, err := json.Marshal(payloadMap)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%s: %w", defined_error.ErrMarshalError.Error(), err)
 	}
 
 	unsigned := base64.RawURLEncoding.EncodeToString([]byte(header)) + "." + base64.RawURLEncoding.EncodeToString(payloadBytes)
@@ -168,7 +172,7 @@ func GenerateAppJWTFromPEM(pkPEM, appId string) (string, error) {
 
 	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hashed[:])
 	if err != nil {
-		return "", fmt.Errorf("sign jwt: %w", err)
+		return "", fmt.Errorf("%s: %w", defined_error.ErrSignTokenError.Error(), err)
 	}
 
 	return unsigned + "." + base64.RawURLEncoding.EncodeToString(signature), nil

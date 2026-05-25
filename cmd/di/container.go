@@ -32,6 +32,11 @@ func BuildContainer() *dig.Container {
 		panic("Failed to provide logger: " + err.Error())
 	}
 
+	// token manager
+	if err := container.Provide(pkg.NewTokenManager); err != nil {
+		panic("Failed to provide token manager: " + err.Error())
+	}
+
 	// object storage connection
 	if err := container.Provide(storage.NewRustfsConnection); err != nil {
 		panic("Failed to provide object storage connection: " + err.Error())

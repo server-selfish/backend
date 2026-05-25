@@ -2,7 +2,6 @@ package pkg
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 )
 
@@ -24,21 +23,8 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-func ReturnError(w http.ResponseWriter, err error) {
-	var httpStatus int
-	msg := err.Error()
-
-	switch {
-	case errors.Is(err, ErrAlreadyExist):
-		httpStatus = http.StatusConflict
-	case errors.Is(err, ErrNotFound):
-		httpStatus = http.StatusNotFound
-	default:
-		httpStatus = http.StatusInternalServerError
-		msg = "internal server error"
-	}
-
-	WriteJSON(w, httpStatus, Response{Message: msg})
+func ReturnError(w http.ResponseWriter, statusCode int, err error) {
+	WriteJSON(w, statusCode, Response{Message: err.Error()})
 }
 
 func ReturnSuccess(w http.ResponseWriter, statusCode int, message string, data any) {

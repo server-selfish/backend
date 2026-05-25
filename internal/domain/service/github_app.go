@@ -13,12 +13,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/rs/zerolog"
 	github_app_repository "github.com/server-selfish/backend/internal/domain/repository/github_app"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	"github.com/server-selfish/backend/internal/pkg"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 	"github.com/spf13/viper"
 	"github.com/valkey-io/valkey-go"
 )
@@ -36,14 +39,13 @@ type (
 			ctx context.Context,
 			state string,
 			installationID int64,
-			setupAction string,
 		) error
 		// ListInstallations returns all GitHub App installations connected to
 		// the given user.
-		ListInstallations(ctx context.Context, userID string) ([]schema.GithubInstallation, error)
+		ListInstallations(ctx context.Context, userID pgtype.UUID) ([]schema.GithubInstallation, error)
 		// ListInstallationRepositories returns repositories accessible by the
 		// provided installation, after validating the installation belongs to user.
-		ListInstallationRepositories(ctx context.Context, userID string, installationID int64) ([]schema.GithubInstallationRepository, error)
+		ListInstallationRepositories(ctx context.Context, userID pgtype.UUID, installationID int64) ([]schema.GithubInstallationRepository, error)
 	}
 
 	// githubAppService is the concrete implementation of GithubAppService.
@@ -57,7 +59,6 @@ type (
 		callbackURI        string
 		baseInstallURL     string
 		githubAPIBaseURL   string
-		stateTTL           time.Duration
 		installStatePrefix string
 		githubInfra        github_infra.GithubInfra
 	}
@@ -65,7 +66,7 @@ type (
 
 // NewGithubAppService constructs a GithubAppService and validates required
 // GitHub App configuration from application config.
-func NewGithubAppService(repo *github_app_repository.Queries, cache cache_infra.ValkeyInfra, gi github_infra.GithubInfra) (GithubAppService, error) {
+func NewGithubAppService(repo *github_app_repository.Queries, cache cache_infra.ValkeyInfra, gi github_infra.GithubInfra, logger zerolog.Logger) (GithubAppService, error) {
 	appID := strings.TrimSpace(viper.GetString("auth.github.app.id"))
 	appSlug := strings.TrimSpace(viper.GetString("auth.github.app.slug"))
 	callbackURI := fmt.Sprintf("%s/api/github-app/callback", viper.Get("app.base.url"))
@@ -77,21 +78,19 @@ func NewGithubAppService(repo *github_app_repository.Queries, cache cache_infra.
 	if privateKeyPath != "" {
 		keyData, err := os.ReadFile(privateKeyPath)
 		if err != nil {
-			log.Fatalf("Failed to read private key file: %v", err)
+			logger.Fatal().Err(err).Msg("failed to read private key file")
 		}
 		privateKeyPEM = string(keyData)
-	} else {
-		privateKeyPEM = viper.GetString("auth.github.private.key.pem")
 	}
 
 	if appID == "" || appSlug == "" {
-		return nil, errors.New("github app configuration is incomplete: app_id and app_slug are required")
+		logger.Fatal().Msg(defined_error.ErrMissingAppIDOrSlug.Error())
 	}
 	if strings.TrimSpace(privateKeyPEM) == "" {
-		return nil, errors.New("github app private key is required (private_key_pem or private_key_path)")
+		logger.Fatal().Msg(defined_error.ErrMissingGithubAppPrivateKey.Error())
 	}
 	if callbackURI == "" {
-		return nil, errors.New("github app callback_uri is required")
+		logger.Fatal().Msg(defined_error.ErrMissingGithubAppCallbackURI.Error())
 	}
 
 	return &githubAppService{
@@ -104,7 +103,6 @@ func NewGithubAppService(repo *github_app_repository.Queries, cache cache_infra.
 		callbackURI:        callbackURI,
 		baseInstallURL:     strings.TrimRight(baseInstallURL, "/"),
 		githubAPIBaseURL:   "https://api.github.com",
-		stateTTL:           10 * time.Minute,
 		installStatePrefix: "github_app_install_state:",
 		githubInfra:        gi,
 	}, nil
@@ -113,21 +111,16 @@ func NewGithubAppService(repo *github_app_repository.Queries, cache cache_infra.
 // GetInstallURL generates a GitHub App installation URL and stores a temporary
 // state-to-user mapping in cache for callback verification.
 func (s *githubAppService) GetInstallURL(ctx context.Context, userID string) (string, string, error) {
-
-	if strings.TrimSpace(userID) == "" {
-		return "", "", errors.New("user id is required")
-	}
-
 	// generate random string just for state passes in query params below
 	state, err := pkg.GenerateState(32)
 	if err != nil {
-		return "", "", fmt.Errorf("generate state: %w", err)
+		return "", "", err
 	}
 
 	// parse to normalize url
 	u, err := url.Parse(fmt.Sprintf("%s/%s/installations/new", s.baseInstallURL, s.appSlug))
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", defined_error.ErrParseUrl.Error(), err)
 	}
 	q := u.Query()
 	q.Set("state", state)
@@ -135,8 +128,8 @@ func (s *githubAppService) GetInstallURL(ctx context.Context, userID string) (st
 	u.RawQuery = q.Encode()
 
 	// save the state in cache for callback comparison later
-	if err := s.cache.Set(ctx, s.installStatePrefix+state, userID, s.stateTTL); err != nil {
-		return "", "", fmt.Errorf("store install state: %w", err)
+	if err := s.cache.Set(ctx, s.installStatePrefix+state, userID, 10*time.Minute); err != nil {
+		return "", "", err
 	}
 
 	return u.String(), state, nil
@@ -148,25 +141,17 @@ func (s *githubAppService) HandleInstallCallback(
 	ctx context.Context,
 	state string,
 	installationID int64,
-	setupAction string,
 ) error {
-	if strings.TrimSpace(state) == "" {
-		return errors.New("state is required")
-	}
-	if installationID <= 0 {
-		return errors.New("installation id is required")
-	}
-
 	// get the user id by state passed
 	cacheKey := s.installStatePrefix + state
 	userID, err := s.cache.Get(ctx, cacheKey)
 	if err != nil || strings.TrimSpace(userID) == "" {
-		return errors.New("invalid or expired state")
+		return err
 	}
 
 	// delete the key after retrieved
 	if err := s.cache.Delete(ctx, cacheKey); err != nil {
-		return fmt.Errorf("consume install state: %w", err)
+		return err
 	}
 
 	// installation details
@@ -177,11 +162,10 @@ func (s *githubAppService) HandleInstallCallback(
 
 	pgUserID, err := pkg.StringToPgUUID(userID)
 	if err != nil {
-		return pkg.ErrBadRequest
+		return defined_error.ErrStringUUIDTypeCasting
 	}
 
 	recordID := pkg.PgUUIDFromUUID(uuid.New())
-
 	var accountLogin pgtype.Text
 	if strings.TrimSpace(appInstall.Account.Login) != "" {
 		accountLogin = pkg.ToPgText(&appInstall.Account.Login)
@@ -207,38 +191,25 @@ func (s *githubAppService) HandleInstallCallback(
 		TargetType:     targetType,
 	})
 	if err != nil {
-		return fmt.Errorf("upsert github installation: %w", err)
+		return fmt.Errorf("%s: %w", defined_error.ErrUpsertGithubInstallation.Error(), err)
 	}
 
-	_ = setupAction
 	return nil
 }
 
 // ListInstallations returns all persisted GitHub App installations for the
 // specified user.
-func (s *githubAppService) ListInstallations(ctx context.Context, userID string) ([]schema.GithubInstallation, error) {
-	if strings.TrimSpace(userID) == "" {
-		return nil, errors.New("user id is required")
-	}
-
-	pgUserID, err := pkg.StringToPgUUID(userID)
-	if err != nil {
-		return nil, pkg.ErrBadRequest
-	}
-
+func (s *githubAppService) ListInstallations(ctx context.Context, userID pgtype.UUID) ([]schema.GithubInstallation, error) {
 	// get all installation by User ID
-	rows, err := s.repo.ListGithubInstallationsByUserID(ctx, pgUserID)
+	rows, err := s.repo.ListGithubInstallationsByUserID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("list installations: %w", err)
+		return nil, fmt.Errorf("%s: %w", defined_error.ErrGetListGithubInstallation.Error(), err)
 	}
 
 	out := make([]schema.GithubInstallation, 0, len(rows))
 	for _, r := range rows {
 		item := schema.GithubInstallation{
-			// ID:             r.ID.String(),
-			// UserID:         r.UserID.String(),
 			InstallationID: r.InstallationID,
-			// CreatedAt:      r.CreatedAt.Time.String(),
 		}
 
 		if r.AccountLogin.Valid {
@@ -254,25 +225,16 @@ func (s *githubAppService) ListInstallations(ctx context.Context, userID string)
 
 // ListInstallationRepositories returns repositories accessible by a GitHub App
 // installation after ensuring the installation belongs to the user.
-func (s *githubAppService) ListInstallationRepositories(ctx context.Context, userID string, installationID int64) ([]schema.GithubInstallationRepository, error) {
-	if strings.TrimSpace(userID) == "" {
-		return nil, errors.New("user id is required")
-	}
-	if installationID <= 0 {
-		return nil, errors.New("installation id is required")
-	}
+func (s *githubAppService) ListInstallationRepositories(ctx context.Context, userID pgtype.UUID, installationID int64) ([]schema.GithubInstallationRepository, error) {
 
-	pgUserID, err := pkg.StringToPgUUID(userID)
-	if err != nil {
-		return nil, pkg.ErrBadRequest
-	}
-
-	_, err = s.repo.GetGithubInstallationByUserIDAndInstallationID(ctx, github_app_repository.GetGithubInstallationByUserIDAndInstallationIDParams{
-		UserID:         pgUserID,
+	if _, err := s.repo.GetGithubInstallationByUserIDAndInstallationID(ctx, github_app_repository.GetGithubInstallationByUserIDAndInstallationIDParams{
+		UserID:         userID,
 		InstallationID: installationID,
-	})
-	if err != nil {
-		return nil, pkg.ErrNotFound
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, defined_error.ErrGetGithubInstallationNotFound
+		}
+		return nil, defined_error.ErrGetGithubInstallation
 	}
 
 	cacheKey := fmt.Sprintf("github:repos:%s:%d", userID, installationID)
@@ -297,7 +259,7 @@ func (s *githubAppService) ListInstallationRepositories(ctx context.Context, use
 
 			resp, err := s.httpClient.Do(req)
 			if err != nil {
-				return nil, fmt.Errorf("list installation repositories request failed: %w", err)
+				return nil, fmt.Errorf("%s: %w", defined_error.ErrListInstallationRepositoriesRequest.Error(), err)
 			}
 			defer func() {
 				if err := resp.Body.Close(); err != nil {
@@ -306,14 +268,14 @@ func (s *githubAppService) ListInstallationRepositories(ctx context.Context, use
 			}()
 
 			if resp.StatusCode >= 400 {
-				return nil, fmt.Errorf("list installation repositories failed: status=%d", resp.StatusCode)
+				return nil, fmt.Errorf("%s: %v", defined_error.ErrListInstallationRepositoriesRequest.Error(), resp)
 			}
 
 			var out struct {
 				Repositories []schema.GithubInstallationRepository `json:"repositories"`
 			}
 			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-				return nil, fmt.Errorf("decode installation repositories response: %w", err)
+				return nil, fmt.Errorf("%s: %w", defined_error.ErrDecodeInstallationRepositoriesResponse.Error(), err)
 			}
 
 			for _, repo := range out.Repositories {
@@ -324,12 +286,9 @@ func (s *githubAppService) ListInstallationRepositories(ctx context.Context, use
 				})
 			}
 
-			cacheErr := s.cache.SetJSON(ctx, cacheKey, repositories, 5*time.Minute)
-			if cacheErr != nil {
-				log.Printf("failed to cache repositories: %v", cacheErr)
-			}
+			_ = s.cache.SetJSON(ctx, cacheKey, repositories, 5*time.Minute)
 		} else {
-			return nil, err
+			return nil, getCacheErr
 		}
 	}
 	return repositories, nil

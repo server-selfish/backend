@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 )
 
-func NewNatsConnection() *nats.Conn {
+func NewNatsConnection(logger zerolog.Logger) *nats.Conn {
 	addr := fmt.Sprintf("%s://%s:%s", viper.GetString("nats.protocol"), viper.GetString("nats.address"), viper.GetString("nats.port"))
 	nc, err := nats.Connect(addr,
 		nats.UserInfo(viper.GetString("nats.credential.user"), viper.GetString("nats.credential.password")),
@@ -19,7 +20,7 @@ func NewNatsConnection() *nats.Conn {
 		nats.ReconnectWait(viper.GetDuration("nats.timeout")*time.Second),
 	)
 	if err != nil {
-		panic("failed to connect to nats server")
+		logger.Fatal().Err(err).Msg("nats server ping failed")
 	}
 	return nc
 }

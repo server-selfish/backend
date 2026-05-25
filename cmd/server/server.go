@@ -44,7 +44,7 @@ func (s *Server) Run(ctx context.Context) {
 			defer cache.Close()
 			defer func() {
 				if err := dc.Close(); err != nil {
-					log.Printf("failed to close dc: %v", err)
+					logger.Error().Msgf("failed to close dc: %v", err)
 				}
 			}()
 
@@ -63,7 +63,7 @@ func (s *Server) Run(ctx context.Context) {
 
 			// Protected business routes
 			r.Group(func(pr chi.Router) {
-				pr.Use(handler.RequireAuth(as))
+				pr.Use(handler.RequireAuth(as, &logger))
 
 				handler.RegisterProtectedAuthRoutes(pr, ah)
 				handler.RegisterProtectedGithubAppRoutes(pr, ghah)

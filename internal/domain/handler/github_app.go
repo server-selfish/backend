@@ -6,9 +6,10 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/server-selfish/backend/internal/domain/schema"
+	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 )
 
 type (
@@ -32,14 +33,15 @@ type (
 
 	// githubAppHandler is the concrete implementation of GithubAppHandler.
 	githubAppHandler struct {
-		gs service.GithubAppService
+		gs     service.GithubAppService
+		logger *zerolog.Logger
 	}
 )
 
 // NewGithubAppHandler constructs a GitHub App HTTP handler with the required
 // GitHub App service dependency.
-func NewGithubAppHandler(gs service.GithubAppService) GithubAppHandler {
-	return &githubAppHandler{gs: gs}
+func NewGithubAppHandler(gs service.GithubAppService, logger zerolog.Logger) GithubAppHandler {
+	return &githubAppHandler{gs: gs, logger: &logger}
 }
 
 // Install validates the authenticated user, builds a GitHub App install URL,
@@ -50,19 +52,16 @@ func (h *githubAppHandler) Install(w http.ResponseWriter, r *http.Request) {
 	// get user id to be used later for save installation id
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok || strings.TrimSpace(userID) == "" {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
+		h.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 
 	// get the url and random state to be matched later
 	installURL, _, err := h.gs.GetInstallURL(ctx, userID)
 	if err != nil {
-		pkg.WriteJSON(w, http.StatusInternalServerError, schema.AuthErrorResponse{
-			Message: "failed to build github app install url",
-			Error:   err.Error(),
-		})
+		h.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "link generated", struct {
@@ -70,9 +69,6 @@ func (h *githubAppHandler) Install(w http.ResponseWriter, r *http.Request) {
 	}{
 		Link: installURL,
 	})
-
-	// TODO: change the redirect to give back url
-	// http.Redirect(w, r, installURL, http.StatusTemporaryRedirect)
 }
 
 // Callback handles GitHub's post-installation redirect by validating callback
@@ -82,23 +78,19 @@ func (h *githubAppHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	installationIDRaw := strings.TrimSpace(r.URL.Query().Get("installation_id"))
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
-	setupAction := strings.TrimSpace(r.URL.Query().Get("setup_action"))
+	// setupAction := strings.TrimSpace(r.URL.Query().Get("setup_action"))
 
 	if installationIDRaw == "" || state == "" {
-		pkg.WriteJSON(w, http.StatusBadRequest, schema.AuthErrorResponse{
-			Message: "invalid callback params",
-			Error:   "missing installation_id or state",
-		})
+		h.logger.Error().Msg(defined_error.ErrMissingInstallationIDOrStateParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrInvalidCallbackParams)
 		return
 	}
 
 	// parse installationID to integer
 	installationID, err := strconv.ParseInt(installationIDRaw, 10, 64)
 	if err != nil || installationID <= 0 {
-		pkg.WriteJSON(w, http.StatusBadRequest, schema.AuthErrorResponse{
-			Message: "invalid installation id",
-			Error:   "installation_id must be positive integer",
-		})
+		h.logger.Error().Err(err).Msg(defined_error.ErrInvalidInstallationId.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrInvalidInstallationId)
 		return
 	}
 
@@ -106,18 +98,16 @@ func (h *githubAppHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		ctx,
 		state,
 		installationID,
-		setupAction,
 	); err != nil {
-		pkg.WriteJSON(w, http.StatusInternalServerError, schema.AuthErrorResponse{
-			Message: "failed to save github app installation",
-			Error:   err.Error(),
-		})
+		h.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := githubCallbackTmpl.Execute(w, struct{}{}); err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		h.logger.Error().Err(err).Msg(defined_error.ErrExecuteTemplateError.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 	}
 }
 
@@ -128,25 +118,25 @@ func (h *githubAppHandler) ListInstallations(w http.ResponseWriter, r *http.Requ
 
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok || strings.TrimSpace(userID) == "" {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
+		h.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 
-	items, err := h.gs.ListInstallations(ctx, userID)
+	pgUserID, err := pkg.StringToPgUUID(userID)
 	if err != nil {
-		pkg.WriteJSON(w, http.StatusInternalServerError, schema.AuthErrorResponse{
-			Message: "failed to list github app installations",
-			Error:   err.Error(),
-		})
+		h.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 
-	pkg.WriteJSON(w, http.StatusOK, map[string]any{
-		"message": "ok",
-		"data":    items,
-	})
+	items, err := h.gs.ListInstallations(ctx, pgUserID)
+	if err != nil {
+		h.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch installation list success", items)
 }
 
 // ListInstallationRepositories returns repositories accessible by a specific
@@ -156,33 +146,31 @@ func (h *githubAppHandler) ListInstallationRepositories(w http.ResponseWriter, r
 
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok || strings.TrimSpace(userID) == "" {
-		pkg.WriteJSON(w, http.StatusUnauthorized, schema.AuthErrorResponse{
-			Message: "unauthorized",
-		})
+		h.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
 		return
 	}
 
 	installationIDRaw := strings.TrimSpace(chi.URLParam(r, "id"))
 	installationID, err := strconv.ParseInt(installationIDRaw, 10, 64)
 	if err != nil || installationID <= 0 {
-		pkg.WriteJSON(w, http.StatusBadRequest, schema.AuthErrorResponse{
-			Message: "invalid installation id",
-			Error:   "path param must be positive integer",
-		})
+		h.logger.Error().Err(err).Msg(defined_error.ErrInvalidInstallationId.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrInvalidInstallationId)
 		return
 	}
 
-	repos, err := h.gs.ListInstallationRepositories(ctx, userID, installationID)
+	pgUserID, err := pkg.StringToPgUUID(userID)
 	if err != nil {
-		pkg.WriteJSON(w, http.StatusInternalServerError, schema.AuthErrorResponse{
-			Message: "failed to list installation repositories",
-			Error:   err.Error(),
-		})
+		h.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
 
-	pkg.WriteJSON(w, http.StatusOK, map[string]any{
-		"message": "ok",
-		"data":    repos,
-	})
+	repos, err := h.gs.ListInstallationRepositories(ctx, pgUserID, installationID)
+	if err != nil {
+		h.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch repository list success", repos)
 }

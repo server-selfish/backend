@@ -8,7 +8,7 @@ import (
 	moby_client "github.com/moby/moby/client"
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	"github.com/server-selfish/backend/internal/domain/schema"
-	"github.com/server-selfish/backend/internal/pkg"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 )
 
 type (
@@ -35,7 +35,7 @@ func (c *containerService) GetContainerStatus(ctx context.Context, name string, 
 		Name:   name,
 	}); err != nil {
 		if err == pgx.ErrNoRows {
-			return schema.ContainerStatusResponse{}, pkg.ErrNotFound
+			return schema.ContainerStatusResponse{}, defined_error.ErrContainerNotFound
 		}
 		return schema.ContainerStatusResponse{}, err
 	}

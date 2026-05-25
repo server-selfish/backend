@@ -29,7 +29,7 @@ func NewJetstreamInfra(logger zerolog.Logger, js jetstream.JetStream) JetstreamI
 func (n *jetstreamInfra) CreateOrUpdateNewConsumer(ctx context.Context, streamName string, jsConfig *jetstream.ConsumerConfig) (jetstream.Consumer, error) {
 	stream, err := n.js.Stream(ctx, streamName)
 	if err != nil {
-		n.logger.Fatal().Err(err).Msg("failed to get stream")
+		n.logger.Error().Err(err).Msg("failed to get stream")
 	}
 	cons, err := stream.CreateOrUpdateConsumer(ctx, *jsConfig)
 	if err != nil {
@@ -51,6 +51,7 @@ func (n *jetstreamInfra) CreateOrUpdateNewStream(ctx context.Context, jsConfig *
 func (n *jetstreamInfra) Publish(ctx context.Context, subject string, payload []byte) (*jetstream.PubAck, error) {
 	ack, err := n.js.Publish(ctx, subject, payload)
 	if err != nil {
+		n.logger.Error().Err(err).Msg("failer to publish")
 		return nil, err
 	}
 	return ack, nil

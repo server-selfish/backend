@@ -5,10 +5,10 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"html/template"
 
 	docker_infra "github.com/server-selfish/backend/internal/infra/docker"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 )
 
 func ParseTemplate(tmplStr string, data interface{}) (string, error) {
@@ -37,7 +37,7 @@ func ParseTemplateFromEmbed(name string, data interface{}) (string, error) {
 func parseRSAPrivateKeyFromPEM(key string) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(key))
 	if block == nil {
-		return nil, errors.New("invalid private key pem")
+		return nil, defined_error.ErrInvalidPrivateKey
 	}
 
 	if pk, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
@@ -51,5 +51,5 @@ func parseRSAPrivateKeyFromPEM(key string) (*rsa.PrivateKey, error) {
 		}
 	}
 
-	return nil, errors.New("failed to parse rsa private key")
+	return nil, defined_error.ErrFailedParseRSAPrivateKey
 }

@@ -4,15 +4,16 @@ import (
 	"context"
 
 	"github.com/moby/moby/client"
+	"github.com/rs/zerolog"
 )
 
-func NewDockerClient() *client.Client {
+func NewDockerClient(logger zerolog.Logger) *client.Client {
 	cli, err := client.New(client.FromEnv)
 	if err != nil {
-		panic("failed to initiate docker client")
+		logger.Fatal().Err(err).Msg("failed to initiate docker client")
 	}
 	if _, err := cli.Ping(context.Background(), client.PingOptions{}); err != nil {
-		panic("failed to connect with docker")
+		logger.Fatal().Err(err).Msg("failed to connect with docker")
 	}
 	return cli
 }

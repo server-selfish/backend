@@ -11,6 +11,7 @@ import (
 	project_repository "github.com/server-selfish/backend/internal/domain/repository/project"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/pkg"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 )
 
 type (
@@ -44,7 +45,7 @@ func (ps *projectService) GetProjectByNameDetail(ctx context.Context, name strin
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return schema.GetProjectAllDetail{}, pkg.ErrNotFound
+			return schema.GetProjectAllDetail{}, defined_error.ErrProjectNotFound
 		}
 		return schema.GetProjectAllDetail{}, err
 	}
@@ -70,7 +71,7 @@ func (ps *projectService) GetProjectByName(ctx context.Context, name string, use
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return schema.GetProjectDetail{}, pkg.ErrNotFound
+			return schema.GetProjectDetail{}, defined_error.ErrProjectNotFound
 		}
 		return schema.GetProjectDetail{}, err
 	}
@@ -90,10 +91,13 @@ func (ps *projectService) GetProjectByName(ctx context.Context, name string, use
 
 // DeleteProjectById implements [ProjectService].
 func (ps *projectService) DeleteProjectById(ctx context.Context, id, userID pgtype.UUID) error {
-	return ps.pr.DeleteProjectById(ctx, project_repository.DeleteProjectByIdParams{
+	if err := ps.pr.DeleteProjectById(ctx, project_repository.DeleteProjectByIdParams{
 		ID:     id,
 		UserID: userID,
-	})
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetAllProjects implements [ProjectService].
@@ -102,9 +106,9 @@ func (ps *projectService) GetAllProjects(ctx context.Context, userID pgtype.UUID
 	if err != nil {
 		return nil, err
 	}
-	if len(projects) == 0 {
-		return nil, pkg.ErrNotFound
-	}
+	// if len(projects) == 0 {
+	// 	return nil, pkg.ErrNotFound
+	// }
 	var res []schema.GetProjectsData
 	for _, p := range projects {
 		res = append(res, schema.GetProjectsData{
@@ -125,7 +129,7 @@ func (ps *projectService) GetProjectById(ctx context.Context, id, userID pgtype.
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return schema.GetProjectsData{}, pkg.ErrNotFound
+			return schema.GetProjectsData{}, defined_error.ErrProjectNotFound
 		}
 		return schema.GetProjectsData{}, err
 	}
@@ -147,7 +151,7 @@ func (ps *projectService) UpdateProjectById(ctx context.Context, id, userID pgty
 	}); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return pkg.ErrAlreadyExist
+			return defined_error.ErrProjectNameUniqueConstraint
 		}
 		return err
 	}
@@ -163,7 +167,7 @@ func (ps *projectService) CreateProject(ctx context.Context, userID pgtype.UUID,
 	}); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return pkg.ErrAlreadyExist
+			return defined_error.ErrProjectNameUniqueConstraint
 		}
 		return err
 	}

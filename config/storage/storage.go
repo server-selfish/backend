@@ -1,14 +1,16 @@
 package storage
 
 import (
-	"log"
+	"context"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 )
 
-func NewRustfsConnection() *minio.Client {
+func NewRustfsConnection(logger zerolog.Logger) *minio.Client {
 	hostPort := viper.GetString("rustfs.host") + ":" + viper.GetString("rustfs.port")
 	rustfsClient, err := minio.New(hostPort, &minio.Options{
 		Creds: credentials.NewStaticV4(
@@ -19,7 +21,16 @@ func NewRustfsConnection() *minio.Client {
 		Secure: false,
 	})
 	if err != nil {
-		log.Fatalln(err)
+		logger.Fatal().Err(err).Msg("rustfs connection instance error")
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = rustfsClient.ListBuckets(ctx)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("rustfs ping failed")
+	}
+
 	return rustfsClient
 }
