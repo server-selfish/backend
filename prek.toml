@@ -18,6 +18,7 @@ hooks = [
     language = "system",
     entry = "gofmt -w",
     files = "\\.go$",
+    stages = ['pre-commit']
   },
 
   {
@@ -27,6 +28,7 @@ hooks = [
     entry = "go vet ./...",
     pass_filenames = false,
     files = "\\.go$",
+    stages = ['pre-commit']
   },
 
   {
@@ -36,5 +38,15 @@ hooks = [
     entry = "golangci-lint run",
     pass_filenames = false,
     files = "\\.go$",
+    stages = ['pre-commit']
+  },
+  {
+    id = "go-staticcheck",
+    name = "staticcheck",
+    language = "system",
+    entry = "staticcheck ./...",
+    pass_filenames = false,
+    files = "\\.go$",
+    stages = ['pre-push']
   },
 ]
