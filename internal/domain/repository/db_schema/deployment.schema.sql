@@ -4,8 +4,8 @@ CREATE TABLE IF NOT EXISTS deployment(
   git_remote_url VARCHAR NOT NULL,
   project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
   installation_id BIGINT NOT NULL REFERENCES github_installations(installation_id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT deployment_project_name_unique UNIQUE (project_id, name)
 );
 
@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS deployment_techstack(
   version VARCHAR NOT NULL,
   docker_base_image VARCHAR NOT NULL,
   docker_runtime_image VARCHAR NOT NULL,
-  created_at TIMESTAMPTZ default now(),
-  updated_at TIMESTAMPTZ
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS deployment_history(
@@ -26,22 +26,21 @@ CREATE TABLE IF NOT EXISTS deployment_history(
   commit_id VARCHAR NOT NULL,
   commit_msg TEXT NOT NULL,
   version VARCHAR NOT NULL,
-  external_port integer[],
   deployment_techstack_id INTEGER NOT NULL REFERENCES deployment_techstack(id) ON DELETE CASCADE,
   build_command VARCHAR,
   build_folder VARCHAR,
   run_command VARCHAR,
   is_active BOOL NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ default now(),
-  updated_at TIMESTAMPTZ
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS container(
 	id UUID PRIMARY KEY DEFAULT uuidv7(),
   name VARCHAR NOT NULL,
   deployment_history_id INTEGER NOT NULL UNIQUE REFERENCES deployment_history(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS container_env(
@@ -49,10 +48,19 @@ CREATE TABLE IF NOT EXISTS container_env(
   container_id UUID NOT NULL REFERENCES container(id) ON DELETE CASCADE,
   key VARCHAR NOT NULL,
   value VARCHAR NOT NULL,
-  created_at TIMESTAMPTZ default now(),
-  updated_at TIMESTAMPTZ
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS container_port(
+  id SERIAL PRIMARY KEY,
+  container_id UUID NOT NULL REFERENCES container(id) ON DELETE CASCADE,
+  external INTEGER NOT NULL CHECK (external BETWEEN 1 AND 65535),
+  internal INTEGER NOT NULL CHECK (internal BETWEEN 1 AND 65535),
+  protocol VARCHAR(10) NOT NULL CHECK (protocol IN ('TCP', 'UDP')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS project(
 	id UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -60,7 +68,7 @@ CREATE TABLE IF NOT EXISTS project(
   name VARCHAR UNIQUE NOT NULL,
   description TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -71,6 +79,6 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT,
   avatar_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT users_provider_provider_user_id_key UNIQUE (provider, provider_user_id)
 );

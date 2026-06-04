@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT,
   avatar_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT users_provider_provider_user_id_key UNIQUE (provider, provider_user_id)
 );
 
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS github_installations (
   account_id BIGINT,
   target_type TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_github_installations_user_installation
