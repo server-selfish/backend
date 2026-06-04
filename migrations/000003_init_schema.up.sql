@@ -3,8 +3,8 @@ CREATE TABLE IF NOT EXISTS project(
 	user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name VARCHAR UNIQUE NOT NULL,
   description TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS deployment(
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS deployment(
   git_remote_url VARCHAR NOT NULL,
   project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
   installation_id BIGINT NOT NULL REFERENCES github_installations(installation_id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT deployment_project_name_unique UNIQUE (project_id, name)
 );

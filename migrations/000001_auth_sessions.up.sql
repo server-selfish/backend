@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT,
   avatar_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT users_provider_provider_user_id_key UNIQUE (provider, provider_user_id)
 );
 
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   user_agent TEXT,
   ip_address TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions (user_id);

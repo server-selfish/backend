@@ -3,6 +3,6 @@ CREATE TABLE IF NOT EXISTS container_env(
   container_id UUID NOT NULL REFERENCES container(id) ON DELETE CASCADE,
   key VARCHAR NOT NULL,
   value VARCHAR NOT NULL,
-  created_at TIMESTAMPTZ default now(),
-  updated_at TIMESTAMPTZ
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );

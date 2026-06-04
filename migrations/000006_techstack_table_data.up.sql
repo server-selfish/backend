@@ -3,6 +3,7 @@ INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runti
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Go','1.21.13','golang:1.21.13-alpine3.20','gcr.io/distroless/static-debian13');
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Go','1.22.12','golang:1.22.12-alpine3.21','gcr.io/distroless/static-debian13');
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Go','1.23.12','golang:1.23.12-alpine3.22','gcr.io/distroless/static-debian13');
+INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Go','1.24.13','golang:1.24.13-alpine3.23','gcr.io/distroless/static-debian13');
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Go','1.25.9','golang:1.25.9-alpine3.22','gcr.io/distroless/static-debian13');
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Go','1.26.2','golang:1.26.2-alpine3.22','gcr.io/distroless/static-debian13');
 
