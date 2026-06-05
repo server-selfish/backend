@@ -119,19 +119,19 @@ func (a *authService) RefreshAccessToken(ctx context.Context, refreshToken strin
 	}
 
 	// generate new refresh token for new session (session = as long as particular access_token is valid)
-	newRawRefresh, newRefreshHash, newRefreshExp, err := a.token.NewRefreshToken()
-	if err != nil {
-		return schema.AuthTokenPair{}, err
-	}
+	// newRawRefresh, newRefreshHash, newRefreshExp, err := a.token.NewRefreshToken()
+	// if err != nil {
+	// 	return schema.AuthTokenPair{}, err
+	// }
 
 	// save new refresh token in session DB
-	if err := a.ur.RotateAuthSessionToken(ctx, user_repository.RotateAuthSessionTokenParams{
-		ID:               session.ID,
-		RefreshTokenHash: newRefreshHash,
-		ExpiresAt:        pkg.PgTimestamptz(newRefreshExp),
-	}); err != nil {
-		return schema.AuthTokenPair{}, fmt.Errorf("%s: %w", defined_error.ErrRotateRefreshToken.Error(), err)
-	}
+	// if err := a.ur.RotateAuthSessionToken(ctx, user_repository.RotateAuthSessionTokenParams{
+	// 	ID:               session.ID,
+	// 	RefreshTokenHash: newRefreshHash,
+	// 	ExpiresAt:        pkg.PgTimestamptz(newRefreshExp),
+	// }); err != nil {
+	// 	return schema.AuthTokenPair{}, fmt.Errorf("%s: %w", defined_error.ErrRotateRefreshToken.Error(), err)
+	// }
 
 	// generate access token
 	access, accessExp, err := a.token.GenerateAccessToken(session.UserID.String(), session.ID.String(), "github")
@@ -140,11 +140,9 @@ func (a *authService) RefreshAccessToken(ctx context.Context, refreshToken strin
 	}
 
 	return schema.AuthTokenPair{
-		AccessToken:           access,
-		AccessTokenExpiresIn:  int64(time.Until(accessExp).Seconds()),
-		RefreshToken:          newRawRefresh,
-		RefreshTokenExpiresIn: int64(time.Until(newRefreshExp).Seconds()),
-		TokenType:             "Bearer",
+		AccessToken:          access,
+		AccessTokenExpiresIn: int64(time.Until(accessExp).Seconds()),
+		TokenType:            "Bearer",
 	}, nil
 }
 

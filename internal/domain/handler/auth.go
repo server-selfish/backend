@@ -119,7 +119,7 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	if strings.TrimSpace(req.RefreshToken) == "" {
 		h.logger.Error().Msg(defined_error.ErrRefreshTokenRequired.Error())
-		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrRefreshTokenRequired)
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrRefreshTokenRequired)
 		return
 	}
 	// get the new access token inside token pair
@@ -138,19 +138,6 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error().Msg(defined_error.ErrFailedCastTokenPairs.Error())
 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrFailedCastTokenPairs)
 		return
-	}
-
-	// rotate cookie refresh token
-	if tokenPair.RefreshToken != "" {
-		http.SetCookie(w, &http.Cookie{
-			Name:     "selfish_refresh_token",
-			Value:    tokenPair.RefreshToken,
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") || r.TLS != nil,
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   int(tokenPair.RefreshTokenExpiresIn),
-		})
 	}
 
 	if tokenPair.AccessToken != "" {
