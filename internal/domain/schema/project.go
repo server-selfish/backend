@@ -42,17 +42,17 @@ type (
 		ContainerName  string `json:"container_name"`
 	}
 	ProjectDeploymentDetail struct {
-		DeploymentName             string  `json:"deployment_name"`
-		DeploymentURL              string  `json:"deployment_url"`
-		DeploymentCreatedAt        string  `json:"deployment_created_at"`
-		DeploymentUpdatedAt        string  `json:"deployment_updated_at"`
-		DeploymentBranch           string  `json:"deployment_branch"`
-		DeploymentVersion          string  `json:"deployment_version"`
-		DeploymentCommitMessage    string  `json:"deployment_commit_msg"`
-		DeploymentPort             []int32 `json:"deployment_port"`
-		DeploymentHistoryCreatedAt string  `json:"deployment_history_created_at"`
-		TechstackName              string  `json:"techstack_name"`
-		TechstackVersion           string  `json:"techstack_version"`
-		ContainerName              string  `json:"container_name"`
+		DeploymentName             string `json:"deployment_name"`
+		DeploymentURL              string `json:"deployment_url"`
+		DeploymentCreatedAt        string `json:"deployment_created_at"`
+		DeploymentUpdatedAt        string `json:"deployment_updated_at"`
+		DeploymentBranch           string `json:"deployment_branch"`
+		DeploymentVersion          string `json:"deployment_version"`
+		DeploymentCommitMessage    string `json:"deployment_commit_msg"`
+		DeploymentPort             []Port `json:"deployment_port"`
+		DeploymentHistoryCreatedAt string `json:"deployment_history_created_at"`
+		TechstackName              string `json:"techstack_name"`
+		TechstackVersion           string `json:"techstack_version"`
+		ContainerName              string `json:"container_name"`
 	}
 )
