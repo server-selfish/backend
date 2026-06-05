@@ -3,6 +3,7 @@ package router
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -33,6 +34,7 @@ func NewHTTPChi() chi.Router {
 		MaxAge:           maxAge,
 	}).Handler)
 	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(5 * time.Minute))
 
 	return r
 }
