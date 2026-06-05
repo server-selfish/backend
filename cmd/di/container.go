@@ -121,14 +121,17 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(service.NewProjectService); err != nil {
 		panic("Failed to provide Project Service: " + err.Error())
 	}
-	if err := container.Provide(service.NewDeploymentService); err != nil {
-		panic("Failed to provide Deployment Service: " + err.Error())
-	}
 	if err := container.Provide(service.NewAuthService); err != nil {
 		panic("Failed to provide Auth Service: " + err.Error())
 	}
+	if err := container.Provide(service.NewContainerService); err != nil {
+		panic("Failed to provide Container Service: " + err.Error())
+	}
 	if err := container.Provide(service.NewGithubAppService); err != nil {
 		panic("Failed to provide Github App Service: " + err.Error())
+	}
+	if err := container.Provide(service.NewDeploymentService); err != nil {
+		panic("Failed to provide Deployment Service: " + err.Error())
 	}
 
 	// handlers
@@ -143,6 +146,9 @@ func BuildContainer() *dig.Container {
 	}
 	if err := container.Provide(handler.NewGithubAppHandler); err != nil {
 		panic("Failed to provide Github App Handler: " + err.Error())
+	}
+	if err := container.Provide(handler.NewContainerHandler); err != nil {
+		panic("Failed to provide Container Handler: " + err.Error())
 	}
 
 	// http server

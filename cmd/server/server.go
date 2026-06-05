@@ -38,6 +38,7 @@ func (s *Server) Run(ctx context.Context) {
 			dh handler.DeploymentHandler,
 			ah handler.AuthHandler,
 			ghah handler.GithubAppHandler,
+			ch handler.ContainerHandler,
 			as service.AuthService,
 			dc *client.Client,
 		) {
@@ -69,6 +70,7 @@ func (s *Server) Run(ctx context.Context) {
 				handler.RegisterProtectedGithubAppRoutes(pr, ghah)
 				handler.RegisterProjectRoutes(pr, ph)
 				handler.RegisterDeploymentRoutes(pr, dh)
+				handler.RegisterContainerRoutes(pr, ch)
 			})
 
 			srv := &http.Server{
