@@ -12,6 +12,7 @@ import (
 	build "github.com/docker/cli/cli/command/image/build"
 	"github.com/moby/go-archive"
 	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/jsonmessage"
 )
 
 // EnsureDockerNetwork checks if a Docker network exists, and creates it if not.
@@ -53,23 +54,40 @@ func BuildDockerImage(ctx context.Context, dc *client.Client, pPath string, imag
 	}
 
 	resp, err := dc.ImageBuild(ctx, buildCtx, client.ImageBuildOptions{
-		Tags:       []string{imageTag}, // equivalent to: docker build -t imageTag
-		Dockerfile: "Dockerfile",       // IMPORTANT: relative to build context tar root
-		PullParent: true,               // like --pull
-		Remove:     true,               // like --rm
-		BuildArgs:  apiBuildArgs,       // --build-arg
+		Tags:        []string{imageTag},
+		Dockerfile:  "Dockerfile",
+		PullParent:  true,
+		Remove:      true,
+		BuildArgs:   apiBuildArgs,
+		ForceRemove: true,
 	})
 	if err != nil {
 		return err
 	}
 	defer func() {
+		if _, err := dc.ImagePrune(ctx, client.ImagePruneOptions{
+			Filters: client.Filters{},
+		}); err != nil {
+			log.Printf("failed remove dangling image: %v", err)
+		}
 		if err := resp.Body.Close(); err != nil {
 			log.Printf("failed to close response body: %v", err)
 		}
 	}()
 
 	// Optional: stream build output to logs/stdout
-	_, _ = io.Copy(os.Stdout, resp.Body)
+	// _, _ = io.Copy(os.Stdout, resp.Body)
+	err = jsonmessage.DisplayJSONMessagesStream(
+		resp.Body,
+		io.Discard,
+		0,
+		false,
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
