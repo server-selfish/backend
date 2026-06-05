@@ -7,7 +7,15 @@ SELECT
   CAST (dh.commit_id AS VARCHAR) AS commit_id,
   CAST (dh.commit_msg AS VARCHAR) AS commit_message,
   CAST (dh.version AS VARCHAR) AS deployment_version,
-  dh.external_port AS port,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        "external", cp.external,
+        "internal", cp.internal,
+        "protocol", cp.protocol
+      )
+    ), '[]'
+  )::jsonb as port,
   dt.name AS techstack_name,
   dt.version AS techstack_version,
   CAST (c.id AS VARCHAR) AS container_id,
@@ -23,10 +31,14 @@ JOIN deployment_techstack dt
   ON dh.deployment_techstack_id = dt.id
 LEFT JOIN container c
   ON c.deployment_history_id = dh.id
+LEFT JOIN container_port cp
+  ON cp.container_id = c.id
 WHERE
   p.user_id = $1
   AND d.project_id = $2
-  AND dh.is_active = true;
+  AND dh.is_active = true
+GROUP BY
+  deployment_id;
 
 -- name: GetDeploymentByDeploymentId :one
 SELECT
@@ -55,10 +67,22 @@ SELECT
   dh.commit_id,
   dh.commit_msg AS commit_message,
   dh.version AS deployment_version,
-  dh.external_port AS port,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        "external", cp.external,
+        "internal", cp.internal,
+        "protocol", cp.protocol
+      )
+    ), '[]'
+  )::jsonb as port,
   dh.created_at,
   dh.updated_at
 FROM deployment_history dh
+JOIN container c
+  ON c.deployment_history_id = dh.id
+JOIN container_port cp
+  ON cp.container_id = c.id
 JOIN deployment d
   ON dh.deployment_id = d.id
 JOIN project p
@@ -67,6 +91,8 @@ WHERE
   p.user_id = $1 AND
   dh.deployment_id = $2 AND
   dh.is_active = false
+GROUP BY
+  dh.id
 ORDER BY
   COALESCE(dh.updated_at, dh.created_at) DESC;
 
@@ -77,12 +103,24 @@ SELECT
   dh.commit_id AS commit_id,
   dh.commit_msg AS commit_message,
   dh.version AS deployment_version,
-  dh.external_port AS port,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        "external", cp.external,
+        "internal", cp.internal,
+        "protocol", cp.protocol
+      )
+    ), '[]'
+  )::jsonb as port,
   dh.build_command AS build_command,
   dt.id AS techstack_id,
   dt.name AS techstack_name,
   dt.version AS techstack_version
 FROM deployment_history dh
+JOIN container c
+  ON c.deployment_history_id = dh.id
+JOIN container_port cp
+  ON cp.container_id = c.id
 JOIN deployment d
   ON dh.deployment_id = d.id
 JOIN project p
@@ -92,7 +130,9 @@ JOIN deployment_techstack dt
 WHERE
   p.user_id = $1
   AND dh.deployment_id = $2
-  AND dh.is_active = true;
+  AND dh.is_active = true
+GROUP BY
+  deployment_history_id;
 
 -- name: GetTechstackByTechstackId :one
 SELECT
@@ -112,7 +152,11 @@ SELECT
   dt.VERSION AS version
 FROM deployment_techstack dt
 WHERE
-  LOWER(dt."name") = $1;
+  LOWER(dt."name") = $1
+ORDER BY
+  split_part(version, '.', 1)::int DESC,
+  split_part(version, '.', 2)::int DESC,
+  split_part(version, '.', 3)::int DESC;
 
 -- name: SetActiveDeploymentHistoryNonActiveByDeploymentId :exec
 UPDATE deployment_history dh
@@ -138,13 +182,29 @@ WHERE
   AND dh.id = $2
   AND dh.is_active = false;
 
--- name: CreateDeployment :exec
-INSERT INTO public.deployment (name,git_remote_url,project_id,installation_id)
-VALUES ($1,$2,$3,$4);
+-- name: UpsertDeployment :one
+INSERT INTO deployment (
+    name,
+    git_remote_url,
+    project_id,
+    installation_id
+)
+SELECT
+    $1,
+    $2,
+    p.id,
+    $3
+FROM project p
+WHERE p.name = $4
+  AND p.user_id = $5
+ON CONFLICT (name, project_id)
+DO UPDATE
+SET name = deployment.name
+RETURNING id;
 
 -- name: CreateDeploymentHistory :one
-INSERT INTO public.deployment_history (deployment_id, branch, commit_id, commit_msg, version, external_port, deployment_techstack_id, build_command, build_folder, run_command)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+INSERT INTO public.deployment_history (deployment_id, branch, commit_id, commit_msg, version, deployment_techstack_id, build_command, build_folder)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 RETURNING id;
 
 -- name: DeleteDeploymentByDeploymentId :exec

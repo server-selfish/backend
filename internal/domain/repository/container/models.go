@@ -25,6 +25,16 @@ type ContainerEnv struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
+type ContainerPort struct {
+	ID          int32
+	ContainerID pgtype.UUID
+	External    int32
+	Internal    int32
+	Protocol    string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
 type Deployment struct {
 	ID             pgtype.UUID
 	Name           string
@@ -42,7 +52,6 @@ type DeploymentHistory struct {
 	CommitID              string
 	CommitMsg             string
 	Version               string
-	ExternalPort          []int32
 	DeploymentTechstackID int32
 	BuildCommand          pgtype.Text
 	BuildFolder           pgtype.Text

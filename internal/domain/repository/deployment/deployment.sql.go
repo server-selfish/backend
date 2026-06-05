@@ -11,31 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createDeployment = `-- name: CreateDeployment :exec
-INSERT INTO public.deployment (name,git_remote_url,project_id,installation_id)
-VALUES ($1,$2,$3,$4)
-`
-
-type CreateDeploymentParams struct {
-	Name           string
-	GitRemoteUrl   string
-	ProjectID      pgtype.UUID
-	InstallationID int64
-}
-
-func (q *Queries) CreateDeployment(ctx context.Context, arg CreateDeploymentParams) error {
-	_, err := q.db.Exec(ctx, createDeployment,
-		arg.Name,
-		arg.GitRemoteUrl,
-		arg.ProjectID,
-		arg.InstallationID,
-	)
-	return err
-}
-
 const createDeploymentHistory = `-- name: CreateDeploymentHistory :one
-INSERT INTO public.deployment_history (deployment_id, branch, commit_id, commit_msg, version, external_port, deployment_techstack_id, build_command, build_folder, run_command)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+INSERT INTO public.deployment_history (deployment_id, branch, commit_id, commit_msg, version, deployment_techstack_id, build_command, build_folder)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 RETURNING id
 `
 
@@ -45,11 +23,9 @@ type CreateDeploymentHistoryParams struct {
 	CommitID              string
 	CommitMsg             string
 	Version               string
-	ExternalPort          []int32
 	DeploymentTechstackID int32
 	BuildCommand          pgtype.Text
 	BuildFolder           pgtype.Text
-	RunCommand            pgtype.Text
 }
 
 func (q *Queries) CreateDeploymentHistory(ctx context.Context, arg CreateDeploymentHistoryParams) (int32, error) {
@@ -59,11 +35,9 @@ func (q *Queries) CreateDeploymentHistory(ctx context.Context, arg CreateDeploym
 		arg.CommitID,
 		arg.CommitMsg,
 		arg.Version,
-		arg.ExternalPort,
 		arg.DeploymentTechstackID,
 		arg.BuildCommand,
 		arg.BuildFolder,
-		arg.RunCommand,
 	)
 	var id int32
 	err := row.Scan(&id)
@@ -97,12 +71,24 @@ SELECT
   dh.commit_id AS commit_id,
   dh.commit_msg AS commit_message,
   dh.version AS deployment_version,
-  dh.external_port AS port,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        "external", cp.external,
+        "internal", cp.internal,
+        "protocol", cp.protocol
+      )
+    ), '[]'
+  )::jsonb as port,
   dh.build_command AS build_command,
   dt.id AS techstack_id,
   dt.name AS techstack_name,
   dt.version AS techstack_version
 FROM deployment_history dh
+JOIN container c
+  ON c.deployment_history_id = dh.id
+JOIN container_port cp
+  ON cp.container_id = c.id
 JOIN deployment d
   ON dh.deployment_id = d.id
 JOIN project p
@@ -113,6 +99,8 @@ WHERE
   p.user_id = $1
   AND dh.deployment_id = $2
   AND dh.is_active = true
+GROUP BY
+  deployment_history_id
 `
 
 type GetActiveDeploymentHistoryByDeploymentIdParams struct {
@@ -126,7 +114,7 @@ type GetActiveDeploymentHistoryByDeploymentIdRow struct {
 	CommitID            string
 	CommitMessage       string
 	DeploymentVersion   string
-	Port                []int32
+	Port                []byte
 	BuildCommand        pgtype.Text
 	TechstackID         int32
 	TechstackName       string
@@ -189,10 +177,22 @@ SELECT
   dh.commit_id,
   dh.commit_msg AS commit_message,
   dh.version AS deployment_version,
-  dh.external_port AS port,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        "external", cp.external,
+        "internal", cp.internal,
+        "protocol", cp.protocol
+      )
+    ), '[]'
+  )::jsonb as port,
   dh.created_at,
   dh.updated_at
 FROM deployment_history dh
+JOIN container c
+  ON c.deployment_history_id = dh.id
+JOIN container_port cp
+  ON cp.container_id = c.id
 JOIN deployment d
   ON dh.deployment_id = d.id
 JOIN project p
@@ -201,6 +201,8 @@ WHERE
   p.user_id = $1 AND
   dh.deployment_id = $2 AND
   dh.is_active = false
+GROUP BY
+  dh.id
 ORDER BY
   COALESCE(dh.updated_at, dh.created_at) DESC
 `
@@ -216,7 +218,7 @@ type GetDeploymentHistoryByDeploymentIdRow struct {
 	CommitID          string
 	CommitMessage     string
 	DeploymentVersion string
-	Port              []int32
+	Port              []byte
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 }
@@ -259,7 +261,15 @@ SELECT
   CAST (dh.commit_id AS VARCHAR) AS commit_id,
   CAST (dh.commit_msg AS VARCHAR) AS commit_message,
   CAST (dh.version AS VARCHAR) AS deployment_version,
-  dh.external_port AS port,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        "external", cp.external,
+        "internal", cp.internal,
+        "protocol", cp.protocol
+      )
+    ), '[]'
+  )::jsonb as port,
   dt.name AS techstack_name,
   dt.version AS techstack_version,
   CAST (c.id AS VARCHAR) AS container_id,
@@ -275,10 +285,14 @@ JOIN deployment_techstack dt
   ON dh.deployment_techstack_id = dt.id
 LEFT JOIN container c
   ON c.deployment_history_id = dh.id
+LEFT JOIN container_port cp
+  ON cp.container_id = c.id
 WHERE
   p.user_id = $1
   AND d.project_id = $2
   AND dh.is_active = true
+GROUP BY
+  deployment_id
 `
 
 type GetDeploymentsByProjectIdParams struct {
@@ -294,7 +308,7 @@ type GetDeploymentsByProjectIdRow struct {
 	CommitID          string
 	CommitMessage     string
 	DeploymentVersion string
-	Port              []int32
+	Port              []byte
 	TechstackName     string
 	TechstackVersion  string
 	ContainerID       string
@@ -421,7 +435,11 @@ SELECT
   dt.VERSION AS version
 FROM deployment_techstack dt
 WHERE
-  LOWER (dt."name") = $1
+  LOWER(dt."name") = $1
+ORDER BY
+  split_part(version, '.', 1)::int DESC,
+  split_part(version, '.', 2)::int DESC,
+  split_part(version, '.', 3)::int DESC
 `
 
 type GetTechstackVersionByNameRow struct {
@@ -493,4 +511,46 @@ type SetNonActiveDeploymentHistoryActiveByDeploymentHistoryIdParams struct {
 func (q *Queries) SetNonActiveDeploymentHistoryActiveByDeploymentHistoryId(ctx context.Context, arg SetNonActiveDeploymentHistoryActiveByDeploymentHistoryIdParams) error {
 	_, err := q.db.Exec(ctx, setNonActiveDeploymentHistoryActiveByDeploymentHistoryId, arg.UserID, arg.ID)
 	return err
+}
+
+const upsertDeployment = `-- name: UpsertDeployment :one
+INSERT INTO deployment (
+    name,
+    git_remote_url,
+    project_id,
+    installation_id
+)
+SELECT
+    $1,
+    $2,
+    p.id,
+    $3
+FROM project p
+WHERE p.name = $4
+  AND p.user_id = $5
+ON CONFLICT (name, project_id)
+DO UPDATE
+SET name = deployment.name
+RETURNING id
+`
+
+type UpsertDeploymentParams struct {
+	Name           string
+	GitRemoteUrl   string
+	InstallationID int64
+	Name_2         string
+	UserID         pgtype.UUID
+}
+
+func (q *Queries) UpsertDeployment(ctx context.Context, arg UpsertDeploymentParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, upsertDeployment,
+		arg.Name,
+		arg.GitRemoteUrl,
+		arg.InstallationID,
+		arg.Name_2,
+		arg.UserID,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }

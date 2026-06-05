@@ -6,9 +6,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
-	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
@@ -23,7 +21,7 @@ type (
 		GetHistoryDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
 		GetTechstackName(w http.ResponseWriter, r *http.Request)
 		GetTechstackVersionByName(w http.ResponseWriter, r *http.Request)
-		CreateDeployment(w http.ResponseWriter, r *http.Request)
+		// CreateDeployment(w http.ResponseWriter, r *http.Request)
 		CreateNewDeploymentVersionByDeploymentId(w http.ResponseWriter, r *http.Request)
 		DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
 	}
@@ -98,21 +96,7 @@ func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.Resp
 		return
 	}
 
-	id, err := pkg.StringToPgUUID(req.DeploymentID)
-	if err != nil {
-		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
-		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
-		return
-	}
-	if err := d.ds.CreateNewDeploymentVersionByDeploymentId(ctx, ui, ii, deployment_repository.CreateDeploymentHistoryParams{
-		DeploymentID:          id,
-		Branch:                req.Branch,
-		ExternalPort:          req.ExternalPort,
-		DeploymentTechstackID: req.DeploymentTechstackID,
-		BuildCommand:          pgtype.Text{String: req.BuildCommand},
-		BuildFolder:           pgtype.Text{String: req.BuildFolder},
-		RunCommand:            pgtype.Text{String: req.RunCommand},
-	}); err != nil {
+	if err := d.ds.CreateNewDeploymentVersionByDeploymentId(ctx, ui, ii, req); err != nil {
 		d.logger.Error().Msg(err.Error())
 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
@@ -121,31 +105,31 @@ func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.Resp
 }
 
 // CreateDeployment implements [DeploymentHandler].
-func (d *deploymentHandler) CreateDeployment(w http.ResponseWriter, r *http.Request) {
-	req, sc, err, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentParams](w, r, d.logger)
-	if !ok {
-		pkg.ReturnError(w, sc, err)
-		return
-	}
-	ctx := r.Context()
-	id, err := pkg.StringToPgUUID(req.ProjectID)
-	if err != nil {
-		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
-		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
-		return
-	}
-	if err := d.ds.CreateDeployment(ctx, deployment_repository.CreateDeploymentParams{
-		Name:           req.Name,
-		ProjectID:      id,
-		GitRemoteUrl:   req.GitRemoteUrl,
-		InstallationID: req.InstallationID,
-	}); err != nil {
-		d.logger.Error().Msg(err.Error())
-		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
-		return
-	}
-	pkg.ReturnSuccess(w, http.StatusOK, "deployment created", nil)
-}
+// func (d *deploymentHandler) CreateDeployment(w http.ResponseWriter, r *http.Request) {
+// 	req, sc, err, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentParams](w, r, d.logger)
+// 	if !ok {
+// 		pkg.ReturnError(w, sc, err)
+// 		return
+// 	}
+// 	ctx := r.Context()
+// 	id, err := pkg.StringToPgUUID(req.ProjectID)
+// 	if err != nil {
+// 		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+// 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+// 		return
+// 	}
+// 	if err := d.ds.CreateDeployment(ctx, deployment_repository.CreateDeploymentParams{
+// 		Name:           req.Name,
+// 		ProjectID:      id,
+// 		GitRemoteUrl:   req.GitRemoteUrl,
+// 		InstallationID: req.InstallationID,
+// 	}); err != nil {
+// 		d.logger.Error().Msg(err.Error())
+// 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+// 		return
+// 	}
+// 	pkg.ReturnSuccess(w, http.StatusOK, "deployment created", nil)
+// }
 
 // DeleteDeploymentByDeploymentId implements [DeploymentHandler].
 func (d *deploymentHandler) DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {

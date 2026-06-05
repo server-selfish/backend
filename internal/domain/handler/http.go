@@ -1,6 +1,8 @@
 package handler
 
-import "github.com/go-chi/chi/v5"
+import (
+	"github.com/go-chi/chi/v5"
+)
 
 func RegisterPublicAuthRoutes(r chi.Router, ah AuthHandler) {
 	r.Get("/auth/github/login", ah.GithubLogin)
@@ -40,8 +42,8 @@ func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 	r.Get("/deployment/history/{id}", dh.GetHistoryDeploymentByDeploymentId)
 	r.Get("/deployment/techstack", dh.GetTechstackName)
 	r.Get("/deployment/techstack/{techstack_name}/version", dh.GetTechstackVersionByName)
-	r.Post("/deployment", dh.CreateDeployment)
-	r.Post("/deployment/version", dh.CreateDeployment)
+	r.Post("/deployment", dh.CreateNewDeploymentVersionByDeploymentId)
+	// r.Post("/deployment/version", dh.CreateNewDeploymentVersionByDeploymentId)
 	r.Delete("/deployment/{id}", dh.DeleteDeploymentByDeploymentId)
 }
 

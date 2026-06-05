@@ -6,6 +6,17 @@ import (
 )
 
 type (
+	Port struct {
+		External int32  `json:"external" validate:"gt=0"`
+		Internal int32  `json:"internal" validate:"gt=0"`
+		Protocol string `json:"protocol"`
+	}
+	ENV struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+)
+type (
 	CreateDeploymentParams struct {
 		Name           string `json:"name" validate:"required,min=1"`
 		ProjectID      string `json:"project_id" validate:"required,min=1"`
@@ -13,17 +24,22 @@ type (
 		GitRemoteUrl   string `json:"git_remote_url" validate:"required,min=1"`
 	}
 	CreateDeploymentHistoryParams struct {
-		DeploymentID          string  `json:"deployment_id" validate:"required,min=1"`
-		Branch                string  `json:"branch" validate:"required,min=1"`
-		ExternalPort          []int32 `json:"port"`
-		DeploymentTechstackID int32   `json:"techstack_id" validate:"required"`
-		BuildCommand          string  `json:"build_command"`
-		BuildFolder           string  `json:"build_folder"`
-		RunCommand            string  `json:"run_command"`
-		InstallationID        string  `json:"installation_id" validate:"required,min=1"`
+		ProjectName           string `json:"project_name" validate:"required,min=1"`
+		DeploymentName        string `json:"deployment_name" validate:"required,min=1"`
+		DeploymentDescription string `json:"deployment_description"`
+		InstallationID        string `json:"installation_id" validate:"required,min=1"`
+		RepositoryID          string `json:"repository_id" validate:"required,min=1"`
+		Branch                string `json:"branch_name" validate:"required,min=1"`
+		DeploymentTechstackID int32  `json:"techstack_id" validate:"required"`
+		Env                   []ENV  `json:"env"`
+		Port                  []Port `json:"port"`
+		BuildCommand          string `json:"build_command"`
+		BuildFolder           string `json:"build_folder"`
+		MainFileName          string `json:"main_file_name" validate:"required,min=1"`
 	}
 	BuildAndRunContainerParams struct {
 		DepQuery              *deployment_repository.Queries
+		ProjectName           string
 		Path                  string
 		BuildCommand          string
 		BuildFolder           string
@@ -31,25 +47,27 @@ type (
 		UserId                pgtype.UUID
 		ContainerName         string
 		ImageName             string
-		RunCommand            string
+		Env                   []ENV
+		Port                  []Port
 		DeploymentTechstackID int32
+		MainFileName          string
 	}
 )
 type (
 	GetDeploymentData struct {
-		DeploymentID      string  `json:"deployment_id"`
-		GitRemoteUrl      string  `json:"git_remote_url"`
-		DeploymentName    string  `json:"deployment_name"`
-		Branch            string  `json:"branch"`
-		CommitID          string  `json:"commit_id"`
-		CommitMessage     string  `json:"commit_message"`
-		DeploymentVersion string  `json:"deployment_version"`
-		Port              []int32 `json:"port"`
-		TechstackName     string  `json:"techstack_name"`
-		TechstackVersion  string  `json:"techstack_version"`
-		ContainerID       string  `json:"container_id"`
-		CreatedAt         string  `json:"created_at"`
-		UpdatedAt         string  `json:"updated_at"`
+		DeploymentID      string `json:"deployment_id"`
+		GitRemoteUrl      string `json:"git_remote_url"`
+		DeploymentName    string `json:"deployment_name"`
+		Branch            string `json:"branch"`
+		CommitID          string `json:"commit_id"`
+		CommitMessage     string `json:"commit_message"`
+		DeploymentVersion string `json:"deployment_version"`
+		Port              []Port `json:"port"`
+		TechstackName     string `json:"techstack_name"`
+		TechstackVersion  string `json:"techstack_version"`
+		ContainerID       string `json:"container_id"`
+		CreatedAt         string `json:"created_at"`
+		UpdatedAt         string `json:"updated_at"`
 	}
 	GetSingleDeploymentData struct {
 		ID           string `json:"id"`
@@ -59,26 +77,26 @@ type (
 		UpdatedAt    string `json:"updated_at"`
 	}
 	GetActiveDeploymentHistory struct {
-		DeploymentHistoryID int32   `json:"deployment_history_id"`
-		Branch              string  `json:"branch"`
-		CommitId            string  `json:"commit_id"`
-		CommitMessage       string  `json:"commit_message"`
-		DeploymentVersion   string  `json:"deployment_version"`
-		Port                []int32 `json:"port"`
-		BuildCommand        string  `json:"build_command"`
-		TechstackID         int32   `json:"techstack_id"`
-		TechstackName       string  `json:"techstack_name"`
-		TechstackVersion    string  `json:"techstack_version"`
+		DeploymentHistoryID int32  `json:"deployment_history_id"`
+		Branch              string `json:"branch"`
+		CommitId            string `json:"commit_id"`
+		CommitMessage       string `json:"commit_message"`
+		DeploymentVersion   string `json:"deployment_version"`
+		Port                []Port `json:"port"`
+		BuildCommand        string `json:"build_command"`
+		TechstackID         int32  `json:"techstack_id"`
+		TechstackName       string `json:"techstack_name"`
+		TechstackVersion    string `json:"techstack_version"`
 	}
 	GetHistoryDeploymentHistory struct {
-		ID                int32   `json:"deployment_history_id"`
-		Branch            string  `json:"branch"`
-		CommitID          string  `json:"commit_id"`
-		CommitMessage     string  `json:"commit_message"`
-		DeploymentVersion string  `json:"deployment_version"`
-		Port              []int32 `json:"port"`
-		CreatedAt         string  `json:"created_at"`
-		UpdatedAt         string  `json:"updated_at"`
+		ID                int32  `json:"deployment_history_id"`
+		Branch            string `json:"branch"`
+		CommitID          string `json:"commit_id"`
+		CommitMessage     string `json:"commit_message"`
+		DeploymentVersion string `json:"deployment_version"`
+		Port              []Port `json:"port"`
+		CreatedAt         string `json:"created_at"`
+		UpdatedAt         string `json:"updated_at"`
 	}
 	GetTechstackList struct {
 		Name []string `json:"name"`
@@ -93,8 +111,8 @@ type (
 	DockerFileTemplate struct {
 		DockerBaseImage    string
 		DockerRuntimeImage string
-		BuildCommand       string
 		BuildFolder        string
+		BuildCommand       string
 		RunCommand         string
 	}
 )

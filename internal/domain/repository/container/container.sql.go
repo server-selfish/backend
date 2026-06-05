@@ -11,9 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createContainer = `-- name: CreateContainer :exec
+const createContainer = `-- name: CreateContainer :one
 INSERT INTO container (name,deployment_history_id)
 VALUES ($1,$2)
+RETURNING id
 `
 
 type CreateContainerParams struct {
@@ -21,8 +22,77 @@ type CreateContainerParams struct {
 	DeploymentHistoryID int32
 }
 
-func (q *Queries) CreateContainer(ctx context.Context, arg CreateContainerParams) error {
-	_, err := q.db.Exec(ctx, createContainer, arg.Name, arg.DeploymentHistoryID)
+func (q *Queries) CreateContainer(ctx context.Context, arg CreateContainerParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, createContainer, arg.Name, arg.DeploymentHistoryID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const createContainerEnv = `-- name: CreateContainerEnv :exec
+INSERT INTO public.container_env (
+  container_id,
+  key,
+  value
+)
+SELECT
+  $1::uuid,
+  k.key,
+  v.value
+FROM unnest($2::text[])
+  WITH ORDINALITY AS k(key, ord)
+JOIN unnest($3::text[])
+  WITH ORDINALITY AS v(value, ord)
+  USING (ord)
+`
+
+type CreateContainerEnvParams struct {
+	ContainerIds pgtype.UUID
+	Keys         []string
+	Values       []string
+}
+
+func (q *Queries) CreateContainerEnv(ctx context.Context, arg CreateContainerEnvParams) error {
+	_, err := q.db.Exec(ctx, createContainerEnv, arg.ContainerIds, arg.Keys, arg.Values)
+	return err
+}
+
+const createContainerPort = `-- name: CreateContainerPort :exec
+INSERT INTO public.container_port (
+  container_id,
+  external,
+  internal,
+  protocol
+)
+SELECT
+  $1::uuid,
+  e.external,
+  i.internal,
+  p.protocol
+FROM unnest($2::integer[])
+  WITH ORDINALITY AS e(external, ord)
+JOIN unnest($3::integer[])
+  WITH ORDINALITY AS i(internal, ord)
+  USING (ord)
+JOIN unnest($4::varchar[])
+  WITH ORDINALITY AS p(protocol, ord)
+  USING (ord)
+`
+
+type CreateContainerPortParams struct {
+	ContainerIds pgtype.UUID
+	External     []int32
+	Internal     []int32
+	Protocol     []string
+}
+
+func (q *Queries) CreateContainerPort(ctx context.Context, arg CreateContainerPortParams) error {
+	_, err := q.db.Exec(ctx, createContainerPort,
+		arg.ContainerIds,
+		arg.External,
+		arg.Internal,
+		arg.Protocol,
+	)
 	return err
 }
 

@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -16,9 +17,39 @@ func StringToPgUUID(id string) (pgtype.UUID, error) {
 	return uuid, err
 }
 
+func GetRunCommandByTechstack(name, mainFilePath, baseImage string) string {
+	switch strings.ToLower(name) {
+	case "node.js":
+		prefix := strings.Split(baseImage, "/")[0]
+		if mainFilePath != "" {
+			if prefix != "gcr.io" {
+				return ShellToExecForm(fmt.Sprintf("node %s", mainFilePath))
+			}
+			return ShellToExecForm(mainFilePath)
+		}
+		if prefix != "gcr.io" {
+			return ShellToExecForm("node dist/main.js")
+		}
+		return ShellToExecForm("main.js")
+
+	case "go":
+		if mainFilePath != "" {
+			return ShellToExecForm(fmt.Sprintf("/app/%s", mainFilePath))
+		}
+		return ShellToExecForm("main")
+	case "python":
+		if mainFilePath != "" {
+			return ShellToExecForm(mainFilePath)
+		}
+		return ShellToExecForm("main.py")
+	default:
+		return ""
+	}
+}
+
 func GetFileNameByTechstack(name string) string {
 	switch strings.ToLower(name) {
-	case "node":
+	case "node.js":
 		return constant.NODE_DOCKERFILE_TEMPLATE
 	case "go":
 		return constant.GO_DOCKERFILE_TEMPLATE
