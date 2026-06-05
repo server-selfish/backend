@@ -106,10 +106,7 @@ func (ps *projectService) GetAllProjects(ctx context.Context, userID pgtype.UUID
 	if err != nil {
 		return nil, err
 	}
-	// if len(projects) == 0 {
-	// 	return nil, pkg.ErrNotFound
-	// }
-	var res []schema.GetProjectsData
+	res := make([]schema.GetProjectsData, 0, len(projects))
 	for _, p := range projects {
 		res = append(res, schema.GetProjectsData{
 			ID:          p.ID.String(),
