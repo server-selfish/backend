@@ -226,7 +226,6 @@ func (s *githubAppService) ListInstallations(ctx context.Context, userID pgtype.
 // ListInstallationRepositories returns repositories accessible by a GitHub App
 // installation after ensuring the installation belongs to the user.
 func (s *githubAppService) ListInstallationRepositories(ctx context.Context, userID pgtype.UUID, installationID int64) ([]schema.GithubInstallationRepository, error) {
-
 	if _, err := s.repo.GetGithubInstallationByUserIDAndInstallationID(ctx, github_app_repository.GetGithubInstallationByUserIDAndInstallationIDParams{
 		UserID:         userID,
 		InstallationID: installationID,
@@ -240,7 +239,6 @@ func (s *githubAppService) ListInstallationRepositories(ctx context.Context, use
 	cacheKey := fmt.Sprintf("github:repos:%s:%d", userID, installationID)
 	var repositories []schema.GithubInstallationRepository
 	getCacheErr := s.cache.GetJSON(ctx, cacheKey, &repositories)
-
 	if getCacheErr != nil {
 		if errors.Is(getCacheErr, valkey.Nil) {
 			tokenRes, err := s.githubInfra.CreateInstallationToken(ctx, installationID)
@@ -283,9 +281,10 @@ func (s *githubAppService) ListInstallationRepositories(ctx context.Context, use
 					ID:       repo.ID,
 					Name:     repo.Name,
 					FullName: repo.FullName,
+					HTMLURL:  repo.HTMLURL,
+					CloneURL: repo.CloneURL,
 				})
 			}
-
 			_ = s.cache.SetJSON(ctx, cacheKey, repositories, 5*time.Minute)
 		} else {
 			return nil, getCacheErr
