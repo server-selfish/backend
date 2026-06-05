@@ -50,6 +50,21 @@ GROUP BY
   p.name, p.description, p.created_at, p.updated_at;
 
 -- name: GetProjectByNameDetail :one
+WITH container_ports AS(
+	SELECT
+	  cp.container_id,
+	  COALESCE(
+	    json_agg(
+	      DISTINCT jsonb_build_object(
+	        'external', cp.external,
+	        'internal', cp.internal,
+	        'protocol', cp.protocol
+	      )
+	    ), '[]'
+	  )::jsonb as port
+	FROM container_port cp
+	GROUP BY cp.container_id
+)
 SELECT
   p.name AS project_name
   ,p.description AS project_description
@@ -65,7 +80,7 @@ SELECT
         'deployment_branch',dh.branch,
         'deployment_version',dh."version",
         'deployment_commit_msg',dh.commit_msg,
-        'deployment_port',dh.external_port,
+        'deployment_port',cp.port,
         'deployment_history_created_at',dh.created_at,
         'techstack_name', dt.name,
         'techstack_version', dt.version,
@@ -85,6 +100,8 @@ LEFT JOIN deployment_techstack dt
 	ON dt.id = dh.deployment_techstack_id
 LEFT JOIN container c
 	ON c.deployment_history_id = dh.id
+LEFT JOIN container_ports cp
+  ON cp.container_id = c.id
 WHERE
   p.user_id = $1
   AND p.name ILIKE $2
