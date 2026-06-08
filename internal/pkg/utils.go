@@ -3,6 +3,7 @@ package pkg
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -96,4 +97,20 @@ func StrPtr(v string) *string {
 		return nil
 	}
 	return &v
+}
+
+var invalidChars = regexp.MustCompile(`[^a-z0-9]+`)
+var multipleDashes = regexp.MustCompile(`-+`)
+
+func NormalizeDockerName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = invalidChars.ReplaceAllString(name, "-")
+	name = multipleDashes.ReplaceAllString(name, "-")
+	name = strings.Trim(name, "-")
+
+	if name == "" {
+		name = "unnamed"
+	}
+
+	return name
 }
