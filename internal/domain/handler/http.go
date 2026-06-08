@@ -49,4 +49,9 @@ func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 
 func RegisterContainerRoutes(r chi.Router, ch ContainerHandler) {
 	r.Get("/container/status/{name}", ch.GetContainerStatus)
+	r.Get("/container/pause/{name}", ch.PauseContainer)
+	r.Get("/container/unpause/{name}", ch.UnPauseContainer)
+	r.Get("/container/stop/{name}", ch.StopContainer)
+	r.Get("/container/start/{name}", ch.StartContainer)
+	r.Get("/container/restart/{name}", ch.RestartContainer)
 }
