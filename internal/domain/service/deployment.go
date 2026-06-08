@@ -321,6 +321,7 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 		DockerRuntimeImage: techstack.DockerRuntimeImage,
 		BuildFolder:        p.BuildFolder,
 		BuildCommand:       p.BuildCommand,
+		MainFileName:       p.MainFileName,
 		RunCommand:         cmdJson,
 	}
 	template, err := pkg.ParseTemplateFromEmbed(pkg.GetFileNameByTechstack(techstack.Name), tpt)
