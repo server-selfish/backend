@@ -176,8 +176,8 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context
 		if err != nil {
 			return err
 		}
-		cn = fmt.Sprintf("%s.%s", cnUUID.String(), deployment.Name)
-		in = fmt.Sprintf("%s:%s", deployment.Name, version)
+		cn = fmt.Sprintf("%s.%s", cnUUID.String(), pkg.NormalizeDockerName(deployment.Name))
+		in = fmt.Sprintf("%s:%s", pkg.NormalizeDockerName(deployment.Name), version)
 
 		// deactivate + stop & remove container of active version
 		if err := depQuery.SetActiveDeploymentHistoryNonActiveByDeploymentId(ctx, deployment_repository.SetActiveDeploymentHistoryNonActiveByDeploymentIdParams{
@@ -346,7 +346,7 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 		return err
 	}
 	// network name
-	nn := fmt.Sprintf("%s-network", p.ProjectName)
+	nn := fmt.Sprintf("%s-network", pkg.NormalizeDockerName(p.ProjectName))
 	if err := pkg.EnsureDockerNetwork(ctx, d.dc, nn); err != nil {
 		return err
 	}
