@@ -110,6 +110,7 @@ type (
 type (
 	DockerFileTemplate struct {
 		DockerBaseImage    string
+		MainFileName       string
 		DockerRuntimeImage string
 		BuildFolder        string
 		BuildCommand       string
