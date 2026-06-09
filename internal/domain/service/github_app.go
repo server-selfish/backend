@@ -23,7 +23,6 @@ import (
 	"github.com/server-selfish/backend/internal/pkg"
 	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 	"github.com/spf13/viper"
-	"github.com/valkey-io/valkey-go"
 )
 
 type (
@@ -236,59 +235,50 @@ func (s *githubAppService) ListInstallationRepositories(ctx context.Context, use
 		return nil, defined_error.ErrGetGithubInstallation
 	}
 
-	cacheKey := fmt.Sprintf("github:repos:%s:%d", userID, installationID)
-	var repositories []schema.GithubInstallationRepository
-	getCacheErr := s.cache.GetJSON(ctx, cacheKey, &repositories)
-	if getCacheErr != nil {
-		if errors.Is(getCacheErr, valkey.Nil) {
-			tokenRes, err := s.githubInfra.CreateInstallationToken(ctx, installationID)
-			if err != nil {
-				return nil, err
-			}
+	tokenRes, err := s.githubInfra.CreateInstallationToken(ctx, installationID)
+	if err != nil {
+		return nil, err
+	}
 
-			reqURL := fmt.Sprintf("%s/installation/repositories?per_page=100", s.githubAPIBaseURL)
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-			if err != nil {
-				return nil, err
-			}
-			req.Header.Set("Accept", "application/vnd.github+json")
-			req.Header.Set("Authorization", "Bearer "+tokenRes.Token)
-			req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	reqURL := fmt.Sprintf("%s/installation/repositories?per_page=100", s.githubAPIBaseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Authorization", "Bearer "+tokenRes.Token)
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-			resp, err := s.httpClient.Do(req)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", defined_error.ErrListInstallationRepositoriesRequest.Error(), err)
-			}
-			defer func() {
-				if err := resp.Body.Close(); err != nil {
-					log.Printf("failed to close response body: %v", err)
-				}
-			}()
-
-			if resp.StatusCode >= 400 {
-				return nil, fmt.Errorf("%s: %v", defined_error.ErrListInstallationRepositoriesRequest.Error(), resp)
-			}
-
-			var out struct {
-				Repositories []schema.GithubInstallationRepository `json:"repositories"`
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-				return nil, fmt.Errorf("%s: %w", defined_error.ErrDecodeInstallationRepositoriesResponse.Error(), err)
-			}
-
-			for _, repo := range out.Repositories {
-				repositories = append(repositories, schema.GithubInstallationRepository{
-					ID:       repo.ID,
-					Name:     repo.Name,
-					FullName: repo.FullName,
-					HTMLURL:  repo.HTMLURL,
-					CloneURL: repo.CloneURL,
-				})
-			}
-			_ = s.cache.SetJSON(ctx, cacheKey, repositories, 5*time.Minute)
-		} else {
-			return nil, getCacheErr
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", defined_error.ErrListInstallationRepositoriesRequest.Error(), err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
 		}
+	}()
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("%s: %v", defined_error.ErrListInstallationRepositoriesRequest.Error(), resp)
+	}
+
+	var out struct {
+		Repositories []schema.GithubInstallationRepository `json:"repositories"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("%s: %w", defined_error.ErrDecodeInstallationRepositoriesResponse.Error(), err)
+	}
+	var repositories []schema.GithubInstallationRepository
+
+	for _, repo := range out.Repositories {
+		repositories = append(repositories, schema.GithubInstallationRepository{
+			ID:       repo.ID,
+			Name:     repo.Name,
+			FullName: repo.FullName,
+			HTMLURL:  repo.HTMLURL,
+			CloneURL: repo.CloneURL,
+		})
 	}
 	return repositories, nil
 }
