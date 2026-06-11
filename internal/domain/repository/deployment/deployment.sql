@@ -96,9 +96,10 @@ GROUP BY
 ORDER BY
   COALESCE(dh.updated_at, dh.created_at) DESC;
 
--- name: GetActiveDeploymentHistoryByDeploymentId :one
+-- name: GetActiveDeploymentHistoryByDeploymentName :one
 SELECT
   dh.id AS deployment_history_id,
+  d.git_remote_url AS remote_url,
   dh.branch AS branch,
   dh.commit_id AS commit_id,
   dh.commit_msg AS commit_message,
@@ -106,16 +107,17 @@ SELECT
   COALESCE(
     json_agg(
       DISTINCT jsonb_build_object(
-        "external", cp.external,
-        "internal", cp.internal,
-        "protocol", cp.protocol
+        'external', cp.external,
+        'internal', cp.internal,
+        'protocol', cp.protocol
       )
     ), '[]'
   )::jsonb as port,
   dh.build_command AS build_command,
   dt.id AS techstack_id,
   dt.name AS techstack_name,
-  dt.version AS techstack_version
+  dt.version AS techstack_version,
+  c.name as container_name
 FROM deployment_history dh
 JOIN container c
   ON c.deployment_history_id = dh.id
@@ -129,10 +131,20 @@ JOIN deployment_techstack dt
   ON dh.deployment_techstack_id = dt.id
 WHERE
   p.user_id = $1
-  AND dh.deployment_id = $2
+  AND d.name ILIKE $2
   AND dh.is_active = true
 GROUP BY
-  deployment_history_id;
+  dh.id,
+  d.git_remote_url,
+  dh.branch,
+  dh.commit_id,
+  dh.commit_msg,
+  dh.version,
+  dh.build_command,
+  dt.id,
+  dt.name,
+  dt.version,
+  c.name;
 
 -- name: GetTechstackByTechstackId :one
 SELECT

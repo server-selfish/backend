@@ -78,6 +78,7 @@ type (
 	}
 	GetActiveDeploymentHistory struct {
 		DeploymentHistoryID int32  `json:"deployment_history_id"`
+		RemoteUrl           string `json:"remote_url"`
 		Branch              string `json:"branch"`
 		CommitId            string `json:"commit_id"`
 		CommitMessage       string `json:"commit_message"`
@@ -87,6 +88,7 @@ type (
 		TechstackID         int32  `json:"techstack_id"`
 		TechstackName       string `json:"techstack_name"`
 		TechstackVersion    string `json:"techstack_version"`
+		ContainerName       string `json:"container_name"`
 	}
 	GetHistoryDeploymentHistory struct {
 		ID                int32  `json:"deployment_history_id"`

@@ -64,9 +64,10 @@ func (q *Queries) DeleteDeploymentByDeploymentId(ctx context.Context, arg Delete
 	return err
 }
 
-const getActiveDeploymentHistoryByDeploymentId = `-- name: GetActiveDeploymentHistoryByDeploymentId :one
+const getActiveDeploymentHistoryByDeploymentName = `-- name: GetActiveDeploymentHistoryByDeploymentName :one
 SELECT
   dh.id AS deployment_history_id,
+  d.git_remote_url AS remote_url,
   dh.branch AS branch,
   dh.commit_id AS commit_id,
   dh.commit_msg AS commit_message,
@@ -74,16 +75,17 @@ SELECT
   COALESCE(
     json_agg(
       DISTINCT jsonb_build_object(
-        "external", cp.external,
-        "internal", cp.internal,
-        "protocol", cp.protocol
+        'external', cp.external,
+        'internal', cp.internal,
+        'protocol', cp.protocol
       )
     ), '[]'
   )::jsonb as port,
   dh.build_command AS build_command,
   dt.id AS techstack_id,
   dt.name AS techstack_name,
-  dt.version AS techstack_version
+  dt.version AS techstack_version,
+  c.name as container_name
 FROM deployment_history dh
 JOIN container c
   ON c.deployment_history_id = dh.id
@@ -97,19 +99,30 @@ JOIN deployment_techstack dt
   ON dh.deployment_techstack_id = dt.id
 WHERE
   p.user_id = $1
-  AND dh.deployment_id = $2
+  AND d.name ILIKE $2
   AND dh.is_active = true
 GROUP BY
-  deployment_history_id
+  dh.id,
+  d.git_remote_url,
+  dh.branch,
+  dh.commit_id,
+  dh.commit_msg,
+  dh.version,
+  dh.build_command,
+  dt.id,
+  dt.name,
+  dt.version,
+  c.name
 `
 
-type GetActiveDeploymentHistoryByDeploymentIdParams struct {
-	UserID       pgtype.UUID
-	DeploymentID pgtype.UUID
+type GetActiveDeploymentHistoryByDeploymentNameParams struct {
+	UserID pgtype.UUID
+	Name   string
 }
 
-type GetActiveDeploymentHistoryByDeploymentIdRow struct {
+type GetActiveDeploymentHistoryByDeploymentNameRow struct {
 	DeploymentHistoryID int32
+	RemoteUrl           string
 	Branch              string
 	CommitID            string
 	CommitMessage       string
@@ -119,13 +132,15 @@ type GetActiveDeploymentHistoryByDeploymentIdRow struct {
 	TechstackID         int32
 	TechstackName       string
 	TechstackVersion    string
+	ContainerName       string
 }
 
-func (q *Queries) GetActiveDeploymentHistoryByDeploymentId(ctx context.Context, arg GetActiveDeploymentHistoryByDeploymentIdParams) (GetActiveDeploymentHistoryByDeploymentIdRow, error) {
-	row := q.db.QueryRow(ctx, getActiveDeploymentHistoryByDeploymentId, arg.UserID, arg.DeploymentID)
-	var i GetActiveDeploymentHistoryByDeploymentIdRow
+func (q *Queries) GetActiveDeploymentHistoryByDeploymentName(ctx context.Context, arg GetActiveDeploymentHistoryByDeploymentNameParams) (GetActiveDeploymentHistoryByDeploymentNameRow, error) {
+	row := q.db.QueryRow(ctx, getActiveDeploymentHistoryByDeploymentName, arg.UserID, arg.Name)
+	var i GetActiveDeploymentHistoryByDeploymentNameRow
 	err := row.Scan(
 		&i.DeploymentHistoryID,
+		&i.RemoteUrl,
 		&i.Branch,
 		&i.CommitID,
 		&i.CommitMessage,
@@ -135,6 +150,7 @@ func (q *Queries) GetActiveDeploymentHistoryByDeploymentId(ctx context.Context, 
 		&i.TechstackID,
 		&i.TechstackName,
 		&i.TechstackVersion,
+		&i.ContainerName,
 	)
 	return i, err
 }

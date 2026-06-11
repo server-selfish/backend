@@ -38,7 +38,7 @@ func RegisterProjectRoutes(r chi.Router, ph ProjectHandler) {
 func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 	r.Get("/deployment", dh.GetDeploymentsByProjectId)
 	r.Get("/deployment/{id}", dh.GetDeploymentByDeploymentId)
-	r.Get("/deployment/active/{id}", dh.GetActiveDeploymenByDeploymentId)
+	r.Get("/deployment/active/{name}", dh.GetActiveDeploymenByDeploymentName)
 	r.Get("/deployment/history/{id}", dh.GetHistoryDeploymentByDeploymentId)
 	r.Get("/deployment/techstack", dh.GetTechstackName)
 	r.Get("/deployment/techstack/{techstack_name}/version", dh.GetTechstackVersionByName)
@@ -49,9 +49,9 @@ func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 
 func RegisterContainerRoutes(r chi.Router, ch ContainerHandler) {
 	r.Get("/container/status/{name}", ch.GetContainerStatus)
-	r.Get("/container/pause/{name}", ch.PauseContainer)
-	r.Get("/container/unpause/{name}", ch.UnPauseContainer)
-	r.Get("/container/stop/{name}", ch.StopContainer)
-	r.Get("/container/start/{name}", ch.StartContainer)
-	r.Get("/container/restart/{name}", ch.RestartContainer)
+	r.Post("/container/pause/{name}", ch.PauseContainer)
+	r.Post("/container/unpause/{name}", ch.UnPauseContainer)
+	r.Post("/container/stop/{name}", ch.StopContainer)
+	r.Post("/container/start/{name}", ch.StartContainer)
+	r.Post("/container/restart/{name}", ch.RestartContainer)
 }

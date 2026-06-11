@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -34,7 +35,7 @@ type (
 	DeploymentService interface {
 		GetDeploymentsByProjectId(ctx context.Context, userId, projectId pgtype.UUID) ([]schema.GetDeploymentData, error)
 		GetDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetSingleDeploymentData, error)
-		GetActiveDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetActiveDeploymentHistory, error)
+		GetActiveDeploymentByDeploymentName(ctx context.Context, userId pgtype.UUID, deploymentName string) (schema.GetActiveDeploymentHistory, error)
 		GetHistoryDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) ([]schema.GetHistoryDeploymentHistory, error)
 		GetTechstackName(ctx context.Context) (schema.GetTechstackList, error)
 		GetTechstackVersionByName(ctx context.Context, techstackName string) ([]schema.GetTechstackVersion, error)
@@ -482,11 +483,11 @@ func (d *deploymentService) GetHistoryDeploymentByDeploymentId(ctx context.Conte
 	return res, nil
 }
 
-// GetActiveDeploymentByDeploymentId implements [DeploymentService].
-func (d *deploymentService) GetActiveDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetActiveDeploymentHistory, error) {
-	ad, err := d.dr.GetActiveDeploymentHistoryByDeploymentId(ctx, deployment_repository.GetActiveDeploymentHistoryByDeploymentIdParams{
-		UserID:       userId,
-		DeploymentID: deploymentId,
+// GetActiveDeploymentByDeploymentName implements [DeploymentService].
+func (d *deploymentService) GetActiveDeploymentByDeploymentName(ctx context.Context, userId pgtype.UUID, name string) (schema.GetActiveDeploymentHistory, error) {
+	ad, err := d.dr.GetActiveDeploymentHistoryByDeploymentName(ctx, deployment_repository.GetActiveDeploymentHistoryByDeploymentNameParams{
+		UserID: userId,
+		Name:   name,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -494,17 +495,23 @@ func (d *deploymentService) GetActiveDeploymentByDeploymentId(ctx context.Contex
 		}
 		return schema.GetActiveDeploymentHistory{}, err
 	}
+	var portList []schema.Port
+	if err := json.Unmarshal(ad.Port, &portList); err != nil {
+		return schema.GetActiveDeploymentHistory{}, err
+	}
 	res := schema.GetActiveDeploymentHistory{
 		DeploymentHistoryID: ad.DeploymentHistoryID,
+		RemoteUrl:           ad.RemoteUrl,
 		Branch:              ad.Branch,
 		CommitId:            ad.CommitID,
 		CommitMessage:       ad.CommitMessage,
 		DeploymentVersion:   ad.DeploymentVersion,
-		// Port:                ad.Port,
-		BuildCommand:     ad.BuildCommand.String,
-		TechstackID:      ad.TechstackID,
-		TechstackName:    ad.TechstackName,
-		TechstackVersion: ad.TechstackVersion,
+		Port:                portList,
+		BuildCommand:        ad.BuildCommand.String,
+		TechstackID:         ad.TechstackID,
+		TechstackName:       ad.TechstackName,
+		TechstackVersion:    ad.TechstackVersion,
+		ContainerName:       ad.ContainerName,
 	}
 	return res, nil
 }

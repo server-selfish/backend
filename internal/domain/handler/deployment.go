@@ -17,7 +17,7 @@ type (
 	DeploymentHandler interface {
 		GetDeploymentsByProjectId(w http.ResponseWriter, r *http.Request)
 		GetDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
-		GetActiveDeploymenByDeploymentId(w http.ResponseWriter, r *http.Request)
+		GetActiveDeploymenByDeploymentName(w http.ResponseWriter, r *http.Request)
 		GetHistoryDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
 		GetTechstackName(w http.ResponseWriter, r *http.Request)
 		GetTechstackVersionByName(w http.ResponseWriter, r *http.Request)
@@ -210,8 +210,8 @@ func (d *deploymentHandler) GetHistoryDeploymentByDeploymentId(w http.ResponseWr
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch success", deployments)
 }
 
-// GetActiveDeploymenByDeploymentId implements [DeploymentHandler].
-func (d *deploymentHandler) GetActiveDeploymenByDeploymentId(w http.ResponseWriter, r *http.Request) {
+// GetActiveDeploymenByDeploymentName implements [DeploymentHandler].
+func (d *deploymentHandler) GetActiveDeploymenByDeploymentName(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
@@ -220,8 +220,8 @@ func (d *deploymentHandler) GetActiveDeploymenByDeploymentId(w http.ResponseWrit
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
+	name := chi.URLParam(r, "name")
+	if name == "" {
 		d.logger.Error().Msg(defined_error.ErrMissingIdInParams.Error())
 		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingIdInParams)
 		return
@@ -234,14 +234,7 @@ func (d *deploymentHandler) GetActiveDeploymenByDeploymentId(w http.ResponseWrit
 		return
 	}
 
-	id, err := pkg.StringToPgUUID(idStr)
-	if err != nil {
-		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
-		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
-		return
-	}
-
-	deployment, err := d.ds.GetActiveDeploymentByDeploymentId(ctx, ui, id)
+	deployment, err := d.ds.GetActiveDeploymentByDeploymentName(ctx, ui, name)
 	if err != nil {
 		d.logger.Error().Msg(err.Error())
 		switch {
