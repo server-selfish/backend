@@ -42,7 +42,7 @@ func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 	r.Get("/deployment/history/{id}", dh.GetHistoryDeploymentByDeploymentId)
 	r.Get("/deployment/techstack", dh.GetTechstackName)
 	r.Get("/deployment/techstack/{techstack_name}/version", dh.GetTechstackVersionByName)
-	r.Post("/deployment", dh.CreateNewDeploymentVersionByDeploymentId)
+	r.Post("/deployment", dh.CreateNewDeploymentVersionByDeploymentName)
 	// r.Post("/deployment/version", dh.CreateNewDeploymentVersionByDeploymentId)
 	r.Delete("/deployment/{id}", dh.DeleteDeploymentByDeploymentId)
 }

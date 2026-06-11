@@ -22,7 +22,7 @@ type (
 		GetTechstackName(w http.ResponseWriter, r *http.Request)
 		GetTechstackVersionByName(w http.ResponseWriter, r *http.Request)
 		// CreateDeployment(w http.ResponseWriter, r *http.Request)
-		CreateNewDeploymentVersionByDeploymentId(w http.ResponseWriter, r *http.Request)
+		CreateNewDeploymentVersionByDeploymentName(w http.ResponseWriter, r *http.Request)
 		DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
 	}
 	deploymentHandler struct {
@@ -69,7 +69,7 @@ func (d *deploymentHandler) GetTechstackVersionByName(w http.ResponseWriter, r *
 }
 
 // CreateNewDeploymentVersion implements [DeploymentHandler].
-func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.ResponseWriter, r *http.Request) {
+func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentName(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
@@ -96,7 +96,7 @@ func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentId(w http.Resp
 		return
 	}
 
-	if err := d.ds.CreateNewDeploymentVersionByDeploymentId(ctx, ui, ii, req); err != nil {
+	if err := d.ds.CreateNewDeploymentVersionByDeploymentName(ctx, ui, ii, req); err != nil {
 		d.logger.Error().Msg(err.Error())
 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return

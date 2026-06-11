@@ -40,7 +40,7 @@ type (
 		GetTechstackName(ctx context.Context) (schema.GetTechstackList, error)
 		GetTechstackVersionByName(ctx context.Context, techstackName string) ([]schema.GetTechstackVersion, error)
 		// CreateDeployment(ctx context.Context, params deployment_repository.CreateDeploymentParams) error
-		CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, installationID int64, params schema.CreateDeploymentHistoryParams) error
+		CreateNewDeploymentVersionByDeploymentName(ctx context.Context, userID pgtype.UUID, installationID int64, params schema.CreateDeploymentHistoryParams) error
 		buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error
 		DeleteDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) error
 	}
@@ -76,7 +76,7 @@ func NewDeploymentService(
 }
 
 // CreateNewDeploymentVersion implements [DeploymentService].
-func (d *deploymentService) CreateNewDeploymentVersionByDeploymentId(ctx context.Context, userID pgtype.UUID, installationID int64, params schema.CreateDeploymentHistoryParams) error {
+func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx context.Context, userID pgtype.UUID, installationID int64, params schema.CreateDeploymentHistoryParams) error {
 	reps, err := d.gs.ListInstallationRepositories(ctx, userID, installationID)
 	if err != nil {
 		return err
