@@ -18,7 +18,7 @@ type (
 		GetDeploymentsByProjectId(w http.ResponseWriter, r *http.Request)
 		GetDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
 		GetActiveDeploymenByDeploymentName(w http.ResponseWriter, r *http.Request)
-		GetHistoryDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
+		GetHistoryDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request)
 		GetTechstackName(w http.ResponseWriter, r *http.Request)
 		GetTechstackVersionByName(w http.ResponseWriter, r *http.Request)
 		// CreateDeployment(w http.ResponseWriter, r *http.Request)
@@ -171,7 +171,7 @@ func (d *deploymentHandler) DeleteDeploymentByDeploymentId(w http.ResponseWriter
 }
 
 // GetHistoryDeploymentByDeploymentId implements [DeploymentHandler].
-func (d *deploymentHandler) GetHistoryDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
+func (d *deploymentHandler) GetHistoryDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
@@ -180,8 +180,8 @@ func (d *deploymentHandler) GetHistoryDeploymentByDeploymentId(w http.ResponseWr
 		return
 	}
 
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
+	name := chi.URLParam(r, "name")
+	if name == "" {
 		d.logger.Error().Msg(defined_error.ErrMissingIdInParams.Error())
 		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingIdInParams)
 		return
@@ -194,14 +194,7 @@ func (d *deploymentHandler) GetHistoryDeploymentByDeploymentId(w http.ResponseWr
 		return
 	}
 
-	id, err := pkg.StringToPgUUID(idStr)
-	if err != nil {
-		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
-		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
-		return
-	}
-
-	deployments, err := d.ds.GetHistoryDeploymentByDeploymentId(ctx, ui, id)
+	deployments, err := d.ds.GetHistoryDeploymentByDeploymentName(ctx, ui, name)
 	if err != nil {
 		d.logger.Error().Msg(err.Error())
 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)

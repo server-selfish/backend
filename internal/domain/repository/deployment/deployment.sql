@@ -60,39 +60,42 @@ WHERE
   p.user_id = $1
   AND d.id = $2;
 
--- name: GetDeploymentHistoryByDeploymentId :many
+-- name: GetDeploymentHistoryByDeploymentName :many
 SELECT
   dh.id,
   dh.branch,
   dh.commit_id,
   dh.commit_msg AS commit_message,
   dh.version AS deployment_version,
-  COALESCE(
-    json_agg(
-      DISTINCT jsonb_build_object(
-        "external", cp.external,
-        "internal", cp.internal,
-        "protocol", cp.protocol
-      )
-    ), '[]'
-  )::jsonb as port,
+  dh.build_command AS build_command,
+  dt.id AS techstack_id,
+  dt.name AS techstack_name,
+  dt.version AS techstack_version,
   dh.created_at,
   dh.updated_at
 FROM deployment_history dh
-JOIN container c
-  ON c.deployment_history_id = dh.id
-JOIN container_port cp
-  ON cp.container_id = c.id
 JOIN deployment d
   ON dh.deployment_id = d.id
 JOIN project p
   ON d.project_id = p.id
+JOIN deployment_techstack dt
+  ON dh.deployment_techstack_id = dt.id
 WHERE
-  p.user_id = $1 AND
-  dh.deployment_id = $2 AND
-  dh.is_active = false
+  p.user_id = $1
+  AND d.name ILIKE $2
+  AND dh.is_active = false
 GROUP BY
-  dh.id
+  dh.id,
+  dh.branch,
+  dh.commit_id,
+  dh.commit_msg,
+  dh.version,
+  dh.build_command,
+  dt.id,
+  dt.name,
+  dt.version,
+  dh.created_at,
+  dh.updated_at
 ORDER BY
   COALESCE(dh.updated_at, dh.created_at) DESC;
 
@@ -117,7 +120,9 @@ SELECT
   dt.id AS techstack_id,
   dt.name AS techstack_name,
   dt.version AS techstack_version,
-  c.name as container_name
+  c.name as container_name,
+  dh.created_at,
+  dh.updated_at
 FROM deployment_history dh
 JOIN container c
   ON c.deployment_history_id = dh.id

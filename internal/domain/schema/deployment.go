@@ -89,6 +89,8 @@ type (
 		TechstackName       string `json:"techstack_name"`
 		TechstackVersion    string `json:"techstack_version"`
 		ContainerName       string `json:"container_name"`
+		CreatedAt           string `json:"created_at"`
+		UpdatedAt           string `json:"updated_at"`
 	}
 	GetHistoryDeploymentHistory struct {
 		ID                int32  `json:"deployment_history_id"`
@@ -96,7 +98,10 @@ type (
 		CommitID          string `json:"commit_id"`
 		CommitMessage     string `json:"commit_message"`
 		DeploymentVersion string `json:"deployment_version"`
-		Port              []Port `json:"port"`
+		BuildCommand      string `json:"build_command"`
+		TechstackID       int32  `json:"techstack_id"`
+		TechstackName     string `json:"techstack_name"`
+		TechstackVersion  string `json:"techstack_version"`
 		CreatedAt         string `json:"created_at"`
 		UpdatedAt         string `json:"updated_at"`
 	}

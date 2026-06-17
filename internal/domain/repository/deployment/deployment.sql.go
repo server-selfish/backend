@@ -85,7 +85,9 @@ SELECT
   dt.id AS techstack_id,
   dt.name AS techstack_name,
   dt.version AS techstack_version,
-  c.name as container_name
+  c.name as container_name,
+  dh.created_at,
+  dh.updated_at
 FROM deployment_history dh
 JOIN container c
   ON c.deployment_history_id = dh.id
@@ -133,6 +135,8 @@ type GetActiveDeploymentHistoryByDeploymentNameRow struct {
 	TechstackName       string
 	TechstackVersion    string
 	ContainerName       string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
 }
 
 func (q *Queries) GetActiveDeploymentHistoryByDeploymentName(ctx context.Context, arg GetActiveDeploymentHistoryByDeploymentNameParams) (GetActiveDeploymentHistoryByDeploymentNameRow, error) {
@@ -151,6 +155,8 @@ func (q *Queries) GetActiveDeploymentHistoryByDeploymentName(ctx context.Context
 		&i.TechstackName,
 		&i.TechstackVersion,
 		&i.ContainerName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -186,75 +192,84 @@ func (q *Queries) GetDeploymentByDeploymentId(ctx context.Context, arg GetDeploy
 	return i, err
 }
 
-const getDeploymentHistoryByDeploymentId = `-- name: GetDeploymentHistoryByDeploymentId :many
+const getDeploymentHistoryByDeploymentName = `-- name: GetDeploymentHistoryByDeploymentName :many
 SELECT
   dh.id,
   dh.branch,
   dh.commit_id,
   dh.commit_msg AS commit_message,
   dh.version AS deployment_version,
-  COALESCE(
-    json_agg(
-      DISTINCT jsonb_build_object(
-        "external", cp.external,
-        "internal", cp.internal,
-        "protocol", cp.protocol
-      )
-    ), '[]'
-  )::jsonb as port,
+  dh.build_command AS build_command,
+  dt.id AS techstack_id,
+  dt.name AS techstack_name,
+  dt.version AS techstack_version,
   dh.created_at,
   dh.updated_at
 FROM deployment_history dh
-JOIN container c
-  ON c.deployment_history_id = dh.id
-JOIN container_port cp
-  ON cp.container_id = c.id
 JOIN deployment d
   ON dh.deployment_id = d.id
 JOIN project p
   ON d.project_id = p.id
+JOIN deployment_techstack dt
+  ON dh.deployment_techstack_id = dt.id
 WHERE
-  p.user_id = $1 AND
-  dh.deployment_id = $2 AND
-  dh.is_active = false
+  p.user_id = $1
+  AND d.name ILIKE $2
+  AND dh.is_active = false
 GROUP BY
-  dh.id
+  dh.id,
+  dh.branch,
+  dh.commit_id,
+  dh.commit_msg,
+  dh.version,
+  dh.build_command,
+  dt.id,
+  dt.name,
+  dt.version,
+  dh.created_at,
+  dh.updated_at
 ORDER BY
   COALESCE(dh.updated_at, dh.created_at) DESC
 `
 
-type GetDeploymentHistoryByDeploymentIdParams struct {
-	UserID       pgtype.UUID
-	DeploymentID pgtype.UUID
+type GetDeploymentHistoryByDeploymentNameParams struct {
+	UserID pgtype.UUID
+	Name   string
 }
 
-type GetDeploymentHistoryByDeploymentIdRow struct {
+type GetDeploymentHistoryByDeploymentNameRow struct {
 	ID                int32
 	Branch            string
 	CommitID          string
 	CommitMessage     string
 	DeploymentVersion string
-	Port              []byte
+	BuildCommand      pgtype.Text
+	TechstackID       int32
+	TechstackName     string
+	TechstackVersion  string
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 }
 
-func (q *Queries) GetDeploymentHistoryByDeploymentId(ctx context.Context, arg GetDeploymentHistoryByDeploymentIdParams) ([]GetDeploymentHistoryByDeploymentIdRow, error) {
-	rows, err := q.db.Query(ctx, getDeploymentHistoryByDeploymentId, arg.UserID, arg.DeploymentID)
+func (q *Queries) GetDeploymentHistoryByDeploymentName(ctx context.Context, arg GetDeploymentHistoryByDeploymentNameParams) ([]GetDeploymentHistoryByDeploymentNameRow, error) {
+	rows, err := q.db.Query(ctx, getDeploymentHistoryByDeploymentName, arg.UserID, arg.Name)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetDeploymentHistoryByDeploymentIdRow
+	var items []GetDeploymentHistoryByDeploymentNameRow
 	for rows.Next() {
-		var i GetDeploymentHistoryByDeploymentIdRow
+		var i GetDeploymentHistoryByDeploymentNameRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Branch,
 			&i.CommitID,
 			&i.CommitMessage,
 			&i.DeploymentVersion,
-			&i.Port,
+			&i.BuildCommand,
+			&i.TechstackID,
+			&i.TechstackName,
+			&i.TechstackVersion,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

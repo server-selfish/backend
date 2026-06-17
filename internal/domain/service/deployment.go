@@ -36,7 +36,7 @@ type (
 		GetDeploymentsByProjectId(ctx context.Context, userId, projectId pgtype.UUID) ([]schema.GetDeploymentData, error)
 		GetDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) (schema.GetSingleDeploymentData, error)
 		GetActiveDeploymentByDeploymentName(ctx context.Context, userId pgtype.UUID, deploymentName string) (schema.GetActiveDeploymentHistory, error)
-		GetHistoryDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) ([]schema.GetHistoryDeploymentHistory, error)
+		GetHistoryDeploymentByDeploymentName(ctx context.Context, userId pgtype.UUID, deploymentName string) ([]schema.GetHistoryDeploymentHistory, error)
 		GetTechstackName(ctx context.Context) (schema.GetTechstackList, error)
 		GetTechstackVersionByName(ctx context.Context, techstackName string) ([]schema.GetTechstackVersion, error)
 		// CreateDeployment(ctx context.Context, params deployment_repository.CreateDeploymentParams) error
@@ -459,15 +459,15 @@ func (d *deploymentService) DeleteDeploymentByDeploymentId(ctx context.Context, 
 // }
 
 // GetHistoryDeploymentByDeploymentId implements [DeploymentService].
-func (d *deploymentService) GetHistoryDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) ([]schema.GetHistoryDeploymentHistory, error) {
-	hd, err := d.dr.GetDeploymentHistoryByDeploymentId(ctx, deployment_repository.GetDeploymentHistoryByDeploymentIdParams{
-		UserID:       userId,
-		DeploymentID: deploymentId,
+func (d *deploymentService) GetHistoryDeploymentByDeploymentName(ctx context.Context, userId pgtype.UUID, deploymentName string) ([]schema.GetHistoryDeploymentHistory, error) {
+	hd, err := d.dr.GetDeploymentHistoryByDeploymentName(ctx, deployment_repository.GetDeploymentHistoryByDeploymentNameParams{
+		UserID: userId,
+		Name:   deploymentName,
 	})
 	if err != nil {
 		return nil, err
 	}
-	var res []schema.GetHistoryDeploymentHistory
+	res := make([]schema.GetHistoryDeploymentHistory, 0, len(hd))
 	for _, h := range hd {
 		res = append(res, schema.GetHistoryDeploymentHistory{
 			ID:                h.ID,
@@ -475,9 +475,12 @@ func (d *deploymentService) GetHistoryDeploymentByDeploymentId(ctx context.Conte
 			CommitID:          h.CommitID,
 			CommitMessage:     h.CommitMessage,
 			DeploymentVersion: h.DeploymentVersion,
-			// Port:              h.Port,
-			CreatedAt: h.CreatedAt.Time.String(),
-			UpdatedAt: h.UpdatedAt.Time.String(),
+			BuildCommand:      h.BuildCommand.String,
+			TechstackID:       h.TechstackID,
+			TechstackName:     h.TechstackName,
+			TechstackVersion:  h.TechstackVersion,
+			CreatedAt:         h.CreatedAt.Time.String(),
+			UpdatedAt:         h.UpdatedAt.Time.String(),
 		})
 	}
 	return res, nil
@@ -512,6 +515,8 @@ func (d *deploymentService) GetActiveDeploymentByDeploymentName(ctx context.Cont
 		TechstackName:       ad.TechstackName,
 		TechstackVersion:    ad.TechstackVersion,
 		ContainerName:       ad.ContainerName,
+		CreatedAt:           ad.CreatedAt.Time.String(),
+		UpdatedAt:           ad.UpdatedAt.Time.String(),
 	}
 	return res, nil
 }
