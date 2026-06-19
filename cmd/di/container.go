@@ -6,6 +6,7 @@ import (
 	"github.com/server-selfish/backend/config/cache"
 	docker_client "github.com/server-selfish/backend/config/docker"
 	"github.com/server-selfish/backend/config/logger"
+	"github.com/server-selfish/backend/config/monitoring"
 	"github.com/server-selfish/backend/config/mq"
 	"github.com/server-selfish/backend/config/router"
 	"github.com/server-selfish/backend/config/storage"
@@ -13,11 +14,13 @@ import (
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	github_app_repository "github.com/server-selfish/backend/internal/domain/repository/github_app"
+	monitoring_repository "github.com/server-selfish/backend/internal/domain/repository/monitoring"
 	project_repository "github.com/server-selfish/backend/internal/domain/repository/project"
 	user_repository "github.com/server-selfish/backend/internal/domain/repository/user"
 	"github.com/server-selfish/backend/internal/domain/service"
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
+	monitoring_infra "github.com/server-selfish/backend/internal/infra/monitoring"
 	mq_infra "github.com/server-selfish/backend/internal/infra/mq"
 	storage_infra "github.com/server-selfish/backend/internal/infra/storage"
 	"github.com/server-selfish/backend/internal/pkg"
@@ -50,6 +53,11 @@ func BuildContainer() *dig.Container {
 	// jetstream connection
 	if err := container.Provide(jetstream.New); err != nil {
 		panic("Failed to provide jetstream instance: " + err.Error())
+	}
+
+	// prometheus connection
+	if err := container.Provide(monitoring.NewMonitoring); err != nil {
+		panic("Failed to provide monitoring instance: " + err.Error())
 	}
 
 	// db connection
@@ -94,6 +102,9 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(github_infra.NewGithubInfra); err != nil {
 		panic("Failed to provide github infra: " + err.Error())
 	}
+	if err := container.Provide(monitoring_infra.NewPrometheusInfra); err != nil {
+		panic("Failed to provide prometheus infra: " + err.Error())
+	}
 
 	// utils
 	if err := container.Provide(pkg.NewTxManager); err != nil {
@@ -116,6 +127,9 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(github_app_repository.New); err != nil {
 		panic("Failed to provide github app repository: " + err.Error())
 	}
+	if err := container.Provide(monitoring_repository.NewPrometheusRepository); err != nil {
+		panic("Failed to provide monitoring repository: " + err.Error())
+	}
 
 	// services
 	if err := container.Provide(service.NewProjectService); err != nil {
@@ -133,6 +147,9 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(service.NewDeploymentService); err != nil {
 		panic("Failed to provide Deployment Service: " + err.Error())
 	}
+	if err := container.Provide(service.NewPrometheusService); err != nil {
+		panic("Failed to provide prometheus Service: " + err.Error())
+	}
 
 	// handlers
 	if err := container.Provide(handler.NewProjectHandler); err != nil {
@@ -149,6 +166,9 @@ func BuildContainer() *dig.Container {
 	}
 	if err := container.Provide(handler.NewContainerHandler); err != nil {
 		panic("Failed to provide Container Handler: " + err.Error())
+	}
+	if err := container.Provide(handler.NewMonitoringHandler); err != nil {
+		panic("Failed to provide monitoring Handler: " + err.Error())
 	}
 
 	// http server

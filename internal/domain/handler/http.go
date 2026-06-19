@@ -55,3 +55,12 @@ func RegisterContainerRoutes(r chi.Router, ch ContainerHandler) {
 	r.Post("/container/start/{name}", ch.StartContainer)
 	r.Post("/container/restart/{name}", ch.RestartContainer)
 }
+
+func RegisterMonitoringRoutes(r chi.Router, mh MonitoringHandler) {
+	r.Get("/monitoring/cpu", mh.GetCPUUsage)
+	r.Get("/monitoring/ioread", mh.GetIORead)
+	r.Get("/monitoring/iowrite", mh.GetIOWrite)
+	r.Get("/monitoring/memory", mh.GetMemoryUsage)
+	r.Get("/monitoring/networkrx", mh.GetNetworkRx)
+	r.Get("/monitoring/networktx", mh.GetNetworkTx)
+}

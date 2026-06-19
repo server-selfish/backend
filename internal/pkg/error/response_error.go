@@ -39,3 +39,9 @@ var (
 var (
 	ErrMissingTechstackNameInParams = errors.New("techstack name is missing in params")
 )
+
+// monitoring
+var (
+	ErrInvalidStartTimeFormat = errors.New("invalid start time format")
+	ErrInvalidEndTimeFormat   = errors.New("invalid end time format")
+)

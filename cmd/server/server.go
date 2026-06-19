@@ -39,6 +39,7 @@ func (s *Server) Run(ctx context.Context) {
 			ah handler.AuthHandler,
 			ghah handler.GithubAppHandler,
 			ch handler.ContainerHandler,
+			mh handler.MonitoringHandler,
 			as service.AuthService,
 			dc *client.Client,
 		) {
@@ -71,6 +72,7 @@ func (s *Server) Run(ctx context.Context) {
 				handler.RegisterProjectRoutes(pr, ph)
 				handler.RegisterDeploymentRoutes(pr, dh)
 				handler.RegisterContainerRoutes(pr, ch)
+				handler.RegisterMonitoringRoutes(pr, mh)
 			})
 
 			srv := &http.Server{
