@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"sort"
@@ -21,12 +20,12 @@ import (
 )
 
 type Server struct {
-	Container   *dig.Container
-	ServerReady chan bool
-	Address     string
+	Container *dig.Container
+	// ServerReady chan bool
+	Address string
 }
 
-func (s *Server) Run(ctx context.Context) {
+func (s *Server) Run() {
 	err := s.Container.Invoke(
 		func(
 			logger zerolog.Logger,
@@ -42,6 +41,7 @@ func (s *Server) Run(ctx context.Context) {
 			mh handler.MonitoringHandler,
 			as service.AuthService,
 			dc *client.Client,
+			appCtx context.Context,
 		) {
 			defer cache.Close()
 			defer func() {
@@ -58,6 +58,9 @@ func (s *Server) Run(ctx context.Context) {
 				}
 			}()
 			defer db.Close()
+
+			httpServerReady := make(chan bool)
+			httpServerDone := make(chan struct{})
 
 			// Public auth routes
 			handler.RegisterPublicAuthRoutes(r, ah)
@@ -120,39 +123,43 @@ func (s *Server) Run(ctx context.Context) {
 							logger.Info().Msgf("%-*s  %-*s", maxMethod, rt.method, maxRoute, rt.route)
 						}
 					}
+					close(httpServerReady)
 					if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 						logger.Fatal().Err(err).Msg("Failed to listen and serve http server")
 					}
 				}
 			}()
+			<-httpServerReady
 
-			if s.ServerReady != nil {
-				for range 50 {
-					conn, err := net.DialTimeout("tcp", s.Address, 100*time.Millisecond)
-					if err == nil {
-						if err := conn.Close(); err != nil {
-							logger.Fatal().Err(err).Msg("establish check connection failed to close")
-						}
-						s.ServerReady <- true
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
-			}
+			// if s.ServerReady != nil {
+			// 	for range 50 {
+			// 		conn, err := net.DialTimeout("tcp", s.Address, 100*time.Millisecond)
+			// 		if err == nil {
+			// 			if err := conn.Close(); err != nil {
+			// 				logger.Fatal().Err(err).Msg("establish check connection failed to close")
+			// 			}
+			// 			s.ServerReady <- true
+			// 			break
+			// 		}
+			// 		time.Sleep(100 * time.Millisecond)
+			// 	}
+			// }
 
 			logger.Info().Msgf("HTTP Server Starting in port %s", s.Address)
-			<-ctx.Done()
+			<-appCtx.Done()
 
 			logger.Info().Msg("Shutting down server...")
 
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			if err := srv.Shutdown(shutdownCtx); err != nil {
 				logger.Fatal().Err(err).Msg("HTTP Server forced to shutdown")
 			}
-
 			logger.Info().Msg("Server exiting...")
+			close(httpServerDone)
+			<-httpServerDone
+
 		},
 	)
 	if err != nil {

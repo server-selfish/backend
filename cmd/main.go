@@ -1,11 +1,6 @@
 package main
 
 import (
-	"context"
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/server-selfish/backend/cmd/bootstrap"
 	"github.com/server-selfish/backend/cmd/server"
 	"github.com/spf13/viper"
@@ -13,29 +8,9 @@ import (
 
 func main() {
 	container := bootstrap.Run()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	httpServerReady := make(chan bool)
-	httpServerDone := make(chan struct{})
 	httpServer := &server.Server{
-		Container:   container,
-		ServerReady: httpServerReady,
-		Address:     ":" + viper.GetString("app.http.port"),
+		Container: container,
+		Address:   ":" + viper.GetString("app.http.port"),
 	}
-	go func() {
-		httpServer.Run(ctx)
-		close(httpServerDone)
-	}()
-
-	<-httpServerReady
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGABRT, syscall.SIGTERM)
-
-	<-sig
-	cancel()
-
-	<-httpServerDone
+	httpServer.Run()
 }

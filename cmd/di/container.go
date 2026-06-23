@@ -4,6 +4,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/server-selfish/backend/config/cache"
+	"github.com/server-selfish/backend/config/context"
 	docker_client "github.com/server-selfish/backend/config/docker"
 	"github.com/server-selfish/backend/config/logger"
 	"github.com/server-selfish/backend/config/monitoring"
@@ -35,6 +36,10 @@ func BuildContainer() *dig.Container {
 		panic("Failed to provide logger: " + err.Error())
 	}
 
+	// app context
+	if err := container.Provide(context.NewAppContext); err != nil {
+		panic("Failed to provide app context: " + err.Error())
+	}
 	// token manager
 	if err := container.Provide(pkg.NewTokenManager); err != nil {
 		panic("Failed to provide token manager: " + err.Error())
@@ -120,6 +125,9 @@ func BuildContainer() *dig.Container {
 	}
 	if err := container.Provide(container_repository.New); err != nil {
 		panic("Failed to provide container repository: " + err.Error())
+	}
+	if err := container.Provide(container_repository.NewContainerRepository); err != nil {
+		panic("Failed to provide container log repository : " + err.Error())
 	}
 	if err := container.Provide(user_repository.New); err != nil {
 		panic("Failed to provide user repository: " + err.Error())
