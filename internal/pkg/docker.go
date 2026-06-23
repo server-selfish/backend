@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"github.com/moby/go-archive"
 	"github.com/moby/moby/client"
 	"github.com/moby/moby/client/pkg/jsonmessage"
+	"github.com/server-selfish/backend/internal/domain/schema"
 )
 
 // EnsureDockerNetwork checks if a Docker network exists, and creates it if not.
@@ -126,4 +128,24 @@ func RemoveImage(ctx context.Context, dc *client.Client, imageIDorRef string) er
 		PruneChildren: true, // also remove untagged parent images (where possible)
 	})
 	return err
+}
+
+func ScanStream(
+	ctx context.Context,
+	r io.Reader,
+	stream string,
+	events chan<- schema.ContainerLogEvent,
+) {
+	scanner := bufio.NewScanner(r)
+
+	for scanner.Scan() {
+		select {
+		case events <- schema.ContainerLogEvent{
+			Stream:  stream,
+			Message: scanner.Text(),
+		}:
+		case <-ctx.Done():
+			return
+		}
+	}
 }
