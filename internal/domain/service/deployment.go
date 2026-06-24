@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/docker/cli/cli/command/image/build"
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/client"
@@ -21,11 +24,13 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	moby_client "github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/jsonmessage"
 	"github.com/server-selfish/backend/internal/constant"
+	cache_repository "github.com/server-selfish/backend/internal/domain/repository/cache"
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	"github.com/server-selfish/backend/internal/domain/schema"
-	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
+	git_infra "github.com/server-selfish/backend/internal/infra/git"
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	"github.com/server-selfish/backend/internal/pkg"
 	defined_error "github.com/server-selfish/backend/internal/pkg/error"
@@ -43,35 +48,40 @@ type (
 		CreateNewDeploymentVersionByDeploymentName(ctx context.Context, userID pgtype.UUID, installationID int64, params schema.CreateDeploymentHistoryParams) error
 		buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error
 		DeleteDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) error
+		ensureDockerNetwork(ctx context.Context, networkName string) error
+		buildDockerImage(ctx context.Context, pPath string, imageTag string, buildArgs map[string]string) error
 	}
 	deploymentService struct {
-		gs    GithubAppService
-		dr    *deployment_repository.Queries
-		cr    *container_repository.Queries
-		tm    pkg.TxManager
-		dc    *moby_client.Client
-		gi    github_infra.GithubInfra
-		cache cache_infra.ValkeyInfra
+		gs       GithubAppService
+		dr       *deployment_repository.Queries
+		cr       *container_repository.Queries
+		tm       pkg.TxManager
+		conRep   container_repository.ContainerRepository
+		gi       github_infra.GithubInfra
+		cache    cache_repository.CacheRepository
+		gitInfra git_infra.GitInfra
 	}
 )
 
 func NewDeploymentService(
 	dr *deployment_repository.Queries,
 	gs GithubAppService,
-	cache cache_infra.ValkeyInfra,
+	cache cache_repository.CacheRepository,
 	cr *container_repository.Queries,
 	tm pkg.TxManager,
-	dc *moby_client.Client,
+	conRep container_repository.ContainerRepository,
 	gi github_infra.GithubInfra,
+	gitInfra git_infra.GitInfra,
 ) DeploymentService {
 	return &deploymentService{
-		gs:    gs,
-		dr:    dr,
-		cr:    cr,
-		tm:    tm,
-		cache: cache,
-		dc:    dc,
-		gi:    gi,
+		gs:       gs,
+		dr:       dr,
+		cr:       cr,
+		tm:       tm,
+		cache:    cache,
+		conRep:   conRep,
+		gi:       gi,
+		gitInfra: gitInfra,
 	}
 }
 
@@ -141,7 +151,7 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 		if err != nil {
 			return err
 		}
-		repo, err := git.PlainClone(tmpPath, &git.CloneOptions{
+		repo, err := d.gitInfra.PlainClone(tmpPath, &git.CloneOptions{
 			URL: deployment.GitRemoteUrl,
 			ClientOptions: []client.Option{
 				client.WithHTTPAuth(&http.BasicAuth{
@@ -188,7 +198,7 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 			return err
 		}
 		if activeContainerName != "" {
-			if _, err := d.dc.ContainerStop(ctx, activeContainer.Name, moby_client.ContainerStopOptions{}); err != nil {
+			if _, err := d.conRep.ContainerStop(ctx, activeContainer.Name, moby_client.ContainerStopOptions{}); err != nil {
 				return err
 			}
 		}
@@ -280,19 +290,33 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 		}
 		// stop and remove built container
 		if cn != "" {
-			if err := pkg.StopAndRemoveContainer(ctx, d.dc, cn); err != nil {
+			timeout := 10 * time.Second
+			timeoutInt := int(timeout)
+			if _, err := d.conRep.ContainerStop(ctx, cn, moby_client.ContainerStopOptions{
+				Signal:  "",
+				Timeout: &timeoutInt,
+			}); err != nil {
+				if strings.Contains(err.Error(), "is not running") {
+				} else {
+					return err
+				}
+			}
+			if _, err := d.conRep.ContainerRemove(ctx, cn, moby_client.ContainerRemoveOptions{}); err != nil {
 				return err
 			}
 		}
 		// remove image
 		if in != "" {
-			if err := pkg.RemoveImage(ctx, d.dc, in); err != nil {
+			if _, err := d.conRep.ImageRemove(ctx, in, moby_client.ImageRemoveOptions{
+				Force:         true,
+				PruneChildren: true,
+			}); err != nil {
 				return err
 			}
 		}
 		// start activeContainer
 		if activeContainerName != "" {
-			_, err = d.dc.ContainerStart(ctx, activeContainerName, moby_client.ContainerStartOptions{})
+			_, err = d.conRep.ContainerStart(ctx, activeContainerName, moby_client.ContainerStartOptions{})
 			if err != nil {
 				return err
 			}
@@ -301,7 +325,7 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 	}
 	go func() {
 		if activeContainerName != "" {
-			if _, err := d.dc.ContainerRemove(ctx, activeContainerName, moby_client.ContainerRemoveOptions{}); err != nil {
+			if _, err := d.conRep.ContainerRemove(ctx, activeContainerName, moby_client.ContainerRemoveOptions{}); err != nil {
 				log.Printf("failed to remove container: %v", err)
 			}
 		}
@@ -344,12 +368,12 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 		return err
 	}
 	// build docker image
-	if err = pkg.BuildDockerImage(ctx, d.dc, p.Path, p.ImageName, map[string]string{}); err != nil {
+	if err = d.buildDockerImage(ctx, p.Path, p.ImageName, map[string]string{}); err != nil {
 		return err
 	}
 	// network name
 	nn := fmt.Sprintf("%s-network", pkg.NormalizeDockerName(p.ProjectName))
-	if err := pkg.EnsureDockerNetwork(ctx, d.dc, nn); err != nil {
+	if err := d.ensureDockerNetwork(ctx, nn); err != nil {
 		return err
 	}
 
@@ -381,7 +405,7 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 		)
 	}
 
-	if _, err := d.dc.ContainerCreate(ctx, moby_client.ContainerCreateOptions{
+	if _, err := d.conRep.ContainerCreate(ctx, moby_client.ContainerCreateOptions{
 		Name: p.ContainerName,
 		Config: &container.Config{
 			ExposedPorts: exposedPorts,
@@ -404,7 +428,7 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 		return err
 	}
 
-	_, err = d.dc.ContainerStart(ctx, p.ContainerName, moby_client.ContainerStartOptions{})
+	_, err = d.conRep.ContainerStart(ctx, p.ContainerName, moby_client.ContainerStartOptions{})
 	if err != nil {
 		return err
 	}
@@ -574,4 +598,82 @@ func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, userI
 		})
 	}
 	return res, nil
+}
+
+// buildDockerImage implements [DeploymentService].
+func (d *deploymentService) buildDockerImage(ctx context.Context, pPath string, imageTag string, buildArgs map[string]string) error {
+	excludes, err := build.ReadDockerignore(pPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	excludes = append(excludes, "!"+filepath.ToSlash("Dockerfile"))
+	buildCtx, err := pkg.TarDirectory(pPath, excludes)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := buildCtx.Close(); err != nil {
+			log.Printf("failed to close build context: %v", err)
+		}
+	}()
+
+	apiBuildArgs := map[string]*string{}
+	for k, v := range buildArgs {
+		vv := v
+		apiBuildArgs[k] = &vv
+	}
+
+	resp, err := d.conRep.ImageBuild(ctx, buildCtx, moby_client.ImageBuildOptions{
+		Tags:        []string{imageTag},
+		Dockerfile:  "Dockerfile",
+		PullParent:  true,
+		Remove:      true,
+		BuildArgs:   apiBuildArgs,
+		ForceRemove: true,
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if _, err := d.conRep.ImagePrune(ctx, moby_client.ImagePruneOptions{
+			Filters: moby_client.Filters{},
+		}); err != nil {
+			log.Printf("failed remove dangling image: %v", err)
+		}
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
+
+	err = jsonmessage.DisplayJSONMessagesStream(
+		resp.Body,
+		io.Discard,
+		0,
+		false,
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// ensureDockerNetwork implements [DeploymentService].
+func (d *deploymentService) ensureDockerNetwork(ctx context.Context, networkName string) error {
+	networks, err := d.conRep.NetworkList(ctx, moby_client.NetworkListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, net := range networks.Items {
+		if net.Name == networkName {
+			return nil
+		}
+	}
+	// Network does not exist, create it
+	if _, err := d.conRep.NetworkCreate(ctx, networkName, moby_client.NetworkCreateOptions{
+		Driver: "bridge",
+	}); err != nil {
+		return err
+	}
+	return nil
 }

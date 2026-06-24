@@ -16,9 +16,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
+	cache_repository "github.com/server-selfish/backend/internal/domain/repository/cache"
 	github_app_repository "github.com/server-selfish/backend/internal/domain/repository/github_app"
 	"github.com/server-selfish/backend/internal/domain/schema"
-	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	"github.com/server-selfish/backend/internal/pkg"
 	defined_error "github.com/server-selfish/backend/internal/pkg/error"
@@ -50,7 +50,7 @@ type (
 	// githubAppService is the concrete implementation of GithubAppService.
 	githubAppService struct {
 		repo               *github_app_repository.Queries
-		cache              cache_infra.ValkeyInfra
+		cache              cache_repository.CacheRepository
 		httpClient         *http.Client
 		appID              string
 		appSlug            string
@@ -65,7 +65,7 @@ type (
 
 // NewGithubAppService constructs a GithubAppService and validates required
 // GitHub App configuration from application config.
-func NewGithubAppService(repo *github_app_repository.Queries, cache cache_infra.ValkeyInfra, gi github_infra.GithubInfra, logger zerolog.Logger) (GithubAppService, error) {
+func NewGithubAppService(repo *github_app_repository.Queries, cache cache_repository.CacheRepository, gi github_infra.GithubInfra, logger zerolog.Logger) (GithubAppService, error) {
 	appID := strings.TrimSpace(viper.GetString("auth.github.app.id"))
 	appSlug := strings.TrimSpace(viper.GetString("auth.github.app.slug"))
 	callbackURI := fmt.Sprintf("%s/api/github-app/callback", viper.Get("app.base.url"))

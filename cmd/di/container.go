@@ -12,6 +12,7 @@ import (
 	"github.com/server-selfish/backend/config/router"
 	"github.com/server-selfish/backend/config/storage"
 	"github.com/server-selfish/backend/internal/domain/handler"
+	cache_repository "github.com/server-selfish/backend/internal/domain/repository/cache"
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	github_app_repository "github.com/server-selfish/backend/internal/domain/repository/github_app"
@@ -20,6 +21,8 @@ import (
 	user_repository "github.com/server-selfish/backend/internal/domain/repository/user"
 	"github.com/server-selfish/backend/internal/domain/service"
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
+	docker_infra "github.com/server-selfish/backend/internal/infra/docker"
+	git_infra "github.com/server-selfish/backend/internal/infra/git"
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	monitoring_infra "github.com/server-selfish/backend/internal/infra/monitoring"
 	mq_infra "github.com/server-selfish/backend/internal/infra/mq"
@@ -110,6 +113,12 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(monitoring_infra.NewPrometheusInfra); err != nil {
 		panic("Failed to provide prometheus infra: " + err.Error())
 	}
+	if err := container.Provide(docker_infra.NewDockerInfra); err != nil {
+		panic("Failed to provide prometheus infra: " + err.Error())
+	}
+	if err := container.Provide(git_infra.NewGitInfra); err != nil {
+		panic("Failed to provide git infra: " + err.Error())
+	}
 
 	// utils
 	if err := container.Provide(pkg.NewTxManager); err != nil {
@@ -137,6 +146,9 @@ func BuildContainer() *dig.Container {
 	}
 	if err := container.Provide(monitoring_repository.NewPrometheusRepository); err != nil {
 		panic("Failed to provide monitoring repository: " + err.Error())
+	}
+	if err := container.Provide(cache_repository.NewCacheRepository); err != nil {
+		panic("Failed to provide cache repository: " + err.Error())
 	}
 
 	// services

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -14,7 +15,6 @@ import (
 	"github.com/rs/zerolog"
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	"github.com/server-selfish/backend/internal/domain/schema"
-	"github.com/server-selfish/backend/internal/pkg"
 	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 )
 
@@ -27,21 +27,41 @@ type (
 		StartContainer(ctx context.Context, name string, ui pgtype.UUID) error
 		RestartContainer(ctx context.Context, name string, ui pgtype.UUID) error
 		StreamLogs(ctx context.Context, userID pgtype.UUID, containerName string) (<-chan schema.ContainerLogEvent, <-chan error, error)
+		scanContainerStream(
+			ctx context.Context,
+			r io.Reader,
+			stream string,
+			events chan<- schema.ContainerLogEvent,
+		)
 	}
 	containerService struct {
-		dc     *moby_client.Client
 		cr     *container_repository.Queries
 		conRep container_repository.ContainerRepository
 		logger zerolog.Logger
 	}
 )
 
-func NewContainerService(dc *moby_client.Client, cr *container_repository.Queries, conRep container_repository.ContainerRepository, logger zerolog.Logger) ContainerService {
+func NewContainerService(cr *container_repository.Queries, conRep container_repository.ContainerRepository, logger zerolog.Logger) ContainerService {
 	return &containerService{
-		dc:     dc,
 		cr:     cr,
 		conRep: conRep,
 		logger: logger,
+	}
+}
+
+// scanContainerStream implements [ContainerService].
+func (c *containerService) scanContainerStream(ctx context.Context, r io.Reader, stream string, events chan<- schema.ContainerLogEvent) {
+	scanner := bufio.NewScanner(r)
+
+	for scanner.Scan() {
+		select {
+		case events <- schema.ContainerLogEvent{
+			Stream:  stream,
+			Message: scanner.Text(),
+		}:
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
@@ -115,7 +135,7 @@ func (c *containerService) StreamLogs(ctx context.Context, userID pgtype.UUID, c
 		go func() {
 			defer wg.Done()
 
-			pkg.ScanStream(
+			c.scanContainerStream(
 				ctx,
 				stdoutR,
 				"stdout",
@@ -126,7 +146,7 @@ func (c *containerService) StreamLogs(ctx context.Context, userID pgtype.UUID, c
 		go func() {
 			defer wg.Done()
 
-			pkg.ScanStream(
+			c.scanContainerStream(
 				ctx,
 				stderrR,
 				"stderr",
@@ -158,7 +178,7 @@ func (c *containerService) RestartContainer(ctx context.Context, name string, ui
 		}
 		return err
 	}
-	if _, err := c.dc.ContainerRestart(ctx, name, moby_client.ContainerRestartOptions{}); err != nil {
+	if _, err := c.conRep.ContainerRestart(ctx, name, moby_client.ContainerRestartOptions{}); err != nil {
 		return err
 	}
 	return nil
@@ -175,7 +195,7 @@ func (c *containerService) PauseContainer(ctx context.Context, name string, ui p
 		}
 		return err
 	}
-	if _, err := c.dc.ContainerPause(ctx, name, moby_client.ContainerPauseOptions{}); err != nil {
+	if _, err := c.conRep.ContainerPause(ctx, name, moby_client.ContainerPauseOptions{}); err != nil {
 		return err
 	}
 	return nil
@@ -192,7 +212,7 @@ func (c *containerService) UnPauseContainer(ctx context.Context, name string, ui
 		}
 		return err
 	}
-	if _, err := c.dc.ContainerUnpause(ctx, name, moby_client.ContainerUnpauseOptions{}); err != nil {
+	if _, err := c.conRep.ContainerUnpause(ctx, name, moby_client.ContainerUnpauseOptions{}); err != nil {
 		return err
 	}
 	return nil
@@ -209,7 +229,7 @@ func (c *containerService) StartContainer(ctx context.Context, name string, ui p
 		}
 		return err
 	}
-	if _, err := c.dc.ContainerStart(ctx, name, moby_client.ContainerStartOptions{}); err != nil {
+	if _, err := c.conRep.ContainerStart(ctx, name, moby_client.ContainerStartOptions{}); err != nil {
 		return err
 	}
 	return nil
@@ -226,7 +246,7 @@ func (c *containerService) StopContainer(ctx context.Context, name string, ui pg
 		}
 		return err
 	}
-	if _, err := c.dc.ContainerStop(ctx, name, moby_client.ContainerStopOptions{}); err != nil {
+	if _, err := c.conRep.ContainerStop(ctx, name, moby_client.ContainerStopOptions{}); err != nil {
 		return err
 	}
 	return nil
@@ -243,7 +263,7 @@ func (c *containerService) GetContainerStatus(ctx context.Context, name string, 
 		}
 		return schema.ContainerStatusResponse{}, err
 	}
-	ir, err := c.dc.ContainerInspect(ctx, name, moby_client.ContainerInspectOptions{})
+	ir, err := c.conRep.ContainerInspect(ctx, name, moby_client.ContainerInspectOptions{})
 	if err != nil {
 		if errdefs.IsNotFound(err) {
 			return schema.ContainerStatusResponse{}, fmt.Errorf("%s: %s", defined_error.ErrContainerNotFound.Error(), name)
