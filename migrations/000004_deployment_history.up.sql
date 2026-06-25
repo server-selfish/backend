@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS deployment_history(
   build_command VARCHAR,
   build_folder VARCHAR,
   run_command VARCHAR,
+  main_file_path VARCHAR,
   is_active BOOL NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()

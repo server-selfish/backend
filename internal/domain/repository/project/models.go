@@ -32,6 +32,7 @@ type Deployment struct {
 	GitRemoteUrl   string
 	ProjectID      pgtype.UUID
 	InstallationID int64
+	RepositoryID   int32
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
 }
@@ -47,6 +48,7 @@ type DeploymentHistory struct {
 	BuildCommand          pgtype.Text
 	BuildFolder           pgtype.Text
 	RunCommand            pgtype.Text
+	MainFilePath          pgtype.Text
 	IsActive              bool
 	CreatedAt             pgtype.Timestamptz
 	UpdatedAt             pgtype.Timestamptz

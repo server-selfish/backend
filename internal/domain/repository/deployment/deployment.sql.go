@@ -12,8 +12,8 @@ import (
 )
 
 const createDeploymentHistory = `-- name: CreateDeploymentHistory :one
-INSERT INTO public.deployment_history (deployment_id, branch, commit_id, commit_msg, version, deployment_techstack_id, build_command, build_folder)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+INSERT INTO public.deployment_history (deployment_id, branch, commit_id, commit_msg, version, deployment_techstack_id, build_command, build_folder, run_command, main_file_path)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 RETURNING id
 `
 
@@ -26,6 +26,8 @@ type CreateDeploymentHistoryParams struct {
 	DeploymentTechstackID int32
 	BuildCommand          pgtype.Text
 	BuildFolder           pgtype.Text
+	RunCommand            pgtype.Text
+	MainFilePath          pgtype.Text
 }
 
 func (q *Queries) CreateDeploymentHistory(ctx context.Context, arg CreateDeploymentHistoryParams) (int32, error) {
@@ -38,6 +40,8 @@ func (q *Queries) CreateDeploymentHistory(ctx context.Context, arg CreateDeploym
 		arg.DeploymentTechstackID,
 		arg.BuildCommand,
 		arg.BuildFolder,
+		arg.RunCommand,
+		arg.MainFilePath,
 	)
 	var id int32
 	err := row.Scan(&id)
@@ -163,7 +167,7 @@ func (q *Queries) GetActiveDeploymentHistoryByDeploymentName(ctx context.Context
 
 const getDeploymentByDeploymentId = `-- name: GetDeploymentByDeploymentId :one
 SELECT
-  d.id, d.name, d.git_remote_url, d.project_id, d.installation_id, d.created_at, d.updated_at
+  d.id, d.name, d.git_remote_url, d.project_id, d.installation_id, d.repository_id, d.created_at, d.updated_at
 FROM deployment d
 JOIN project p
   ON p.id = d.project_id
@@ -186,6 +190,7 @@ func (q *Queries) GetDeploymentByDeploymentId(ctx context.Context, arg GetDeploy
 		&i.GitRemoteUrl,
 		&i.ProjectID,
 		&i.InstallationID,
+		&i.RepositoryID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -549,16 +554,18 @@ INSERT INTO deployment (
     name,
     git_remote_url,
     project_id,
-    installation_id
+    installation_id,
+    repository_id
 )
 SELECT
     $1,
     $2,
     p.id,
-    $3
+    $3,
+    $4
 FROM project p
-WHERE p.name = $4
-  AND p.user_id = $5
+WHERE p.name = $5
+  AND p.user_id = $6
 ON CONFLICT (name, project_id)
 DO UPDATE
 SET name = deployment.name
@@ -569,6 +576,7 @@ type UpsertDeploymentParams struct {
 	Name           string
 	GitRemoteUrl   string
 	InstallationID int64
+	RepositoryID   int32
 	Name_2         string
 	UserID         pgtype.UUID
 }
@@ -578,6 +586,7 @@ func (q *Queries) UpsertDeployment(ctx context.Context, arg UpsertDeploymentPara
 		arg.Name,
 		arg.GitRemoteUrl,
 		arg.InstallationID,
+		arg.RepositoryID,
 		arg.Name_2,
 		arg.UserID,
 	)

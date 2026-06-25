@@ -204,24 +204,26 @@ INSERT INTO deployment (
     name,
     git_remote_url,
     project_id,
-    installation_id
+    installation_id,
+    repository_id
 )
 SELECT
     $1,
     $2,
     p.id,
-    $3
+    $3,
+    $4
 FROM project p
-WHERE p.name = $4
-  AND p.user_id = $5
+WHERE p.name = $5
+  AND p.user_id = $6
 ON CONFLICT (name, project_id)
 DO UPDATE
 SET name = deployment.name
 RETURNING id;
 
 -- name: CreateDeploymentHistory :one
-INSERT INTO public.deployment_history (deployment_id, branch, commit_id, commit_msg, version, deployment_techstack_id, build_command, build_folder)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+INSERT INTO public.deployment_history (deployment_id, branch, commit_id, commit_msg, version, deployment_techstack_id, build_command, build_folder, run_command, main_file_path)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 RETURNING id;
 
 -- name: DeleteDeploymentByDeploymentId :exec
