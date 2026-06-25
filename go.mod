@@ -4,9 +4,9 @@ go 1.25.8
 
 require (
 	github.com/containerd/errdefs v1.0.0
-	github.com/docker/cli v29.6.0+incompatible
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/cors v1.2.2
+	github.com/go-git/go-billy/v6 v6.0.0-alpha.1
 	github.com/go-git/go-git/v6 v6.0.0-alpha.4
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -17,6 +17,7 @@ require (
 	github.com/moby/go-archive v0.2.0
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
+	github.com/moby/patternmatcher v0.6.1
 	github.com/nats-io/nats.go v1.52.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.69.0
@@ -45,7 +46,6 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-git/gcfg/v2 v2.0.2 // indirect
-	github.com/go-git/go-billy/v6 v6.0.0-alpha.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -65,9 +65,7 @@ require (
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.7.0 // indirect
-	github.com/moby/sys/symlink v0.3.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
@@ -101,7 +99,6 @@ require (
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 )
