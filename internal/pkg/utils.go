@@ -24,25 +24,25 @@ func GetRunCommandByTechstack(name, mainFilePath, baseImage string) string {
 		prefix := strings.Split(baseImage, "/")[0]
 		if mainFilePath != "" {
 			if prefix != "gcr.io" {
-				return ShellToExecForm(fmt.Sprintf("node %s", mainFilePath))
+				return fmt.Sprintf("node %s", mainFilePath)
 			}
-			return ShellToExecForm(mainFilePath)
+			return mainFilePath
 		}
 		if prefix != "gcr.io" {
-			return ShellToExecForm("node dist/main.js")
+			return "node dist/main.js"
 		}
-		return ShellToExecForm("main.js")
+		return "main.js"
 
 	case "go":
 		if mainFilePath != "" {
-			return ShellToExecForm(fmt.Sprintf("/app/%s", mainFilePath))
+			return fmt.Sprintf("/app/%s", mainFilePath)
 		}
-		return ShellToExecForm("main")
+		return "main"
 	case "python":
 		if mainFilePath != "" {
-			return ShellToExecForm(mainFilePath)
+			return mainFilePath
 		}
-		return ShellToExecForm("main.py")
+		return "main.py"
 	default:
 		return ""
 	}
