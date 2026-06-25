@@ -52,6 +52,10 @@ type (
 		Port                  []Port
 		DeploymentTechstackID int32
 		MainFileName          string
+		RunCommandJSON        string
+		DockerBaseImage       string
+		DockerRuntimeImage    string
+		TechstackName         string
 		// Path                  string
 	}
 )

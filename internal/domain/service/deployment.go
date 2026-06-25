@@ -117,6 +117,7 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 			InstallationID: installationID,
 			Name_2:         params.ProjectName,
 			UserID:         userID,
+			RepositoryID:   int32(repId),
 		})
 		if err != nil {
 			return err
@@ -185,6 +186,14 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 			}
 		}
 
+		techstack, err := depQuery.GetTechstackByTechstackId(ctx, params.DeploymentTechstackID)
+		if err != nil {
+			return err
+		}
+
+		mainFilePath := fmt.Sprintf("%s/%s", params.BuildFolder, params.MainFileName)
+		runCommand := pkg.GetRunCommandByTechstack(techstack.Name, mainFilePath, techstack.DockerBaseImage)
+
 		// build and run new container
 		if err := d.buildAndRunContainer(ctx, schema.BuildAndRunContainerParams{
 			DepQuery:              depQuery,
@@ -200,6 +209,10 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 			ProjectName:           params.ProjectName,
 			MainFileName:          params.MainFileName,
 			UserId:                userID,
+			RunCommandJSON:        pkg.ShellToExecForm(runCommand),
+			DockerBaseImage:       techstack.DockerBaseImage,
+			DockerRuntimeImage:    techstack.DockerRuntimeImage,
+			TechstackName:         techstack.Name,
 		}); err != nil {
 			return err
 		}
@@ -214,6 +227,8 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 			DeploymentTechstackID: params.DeploymentTechstackID,
 			BuildCommand:          pgtype.Text{String: params.BuildCommand, Valid: true},
 			BuildFolder:           pgtype.Text{String: params.BuildFolder, Valid: true},
+			RunCommand:            pgtype.Text{String: runCommand, Valid: true},
+			MainFilePath:          pgtype.Text{String: params.MainFileName, Valid: true},
 		})
 		if err != nil {
 			return err
@@ -312,21 +327,19 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 
 // buildAndRunContainer implements [DeploymentService].`
 func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error {
-	techstack, err := p.DepQuery.GetTechstackByTechstackId(ctx, p.DeploymentTechstackID)
-	if err != nil {
-		return err
-	}
-	mainFilePath := fmt.Sprintf("%s/%s", p.BuildFolder, p.MainFileName)
-	cmdJson := pkg.GetRunCommandByTechstack(techstack.Name, mainFilePath, techstack.DockerBaseImage)
+	// techstack, err := p.DepQuery.GetTechstackByTechstackId(ctx, p.DeploymentTechstackID)
+	// if err != nil {
+	// 	return err
+	// }
 	tpt := schema.DockerFileTemplate{
-		DockerBaseImage:    techstack.DockerBaseImage,
-		DockerRuntimeImage: techstack.DockerRuntimeImage,
+		DockerBaseImage:    p.DockerBaseImage,
+		DockerRuntimeImage: p.DockerRuntimeImage,
 		BuildFolder:        p.BuildFolder,
 		BuildCommand:       p.BuildCommand,
 		MainFileName:       p.MainFileName,
-		RunCommand:         cmdJson,
+		RunCommand:         p.RunCommandJSON,
 	}
-	template, err := pkg.ParseTemplateFromEmbed(pkg.GetFileNameByTechstack(techstack.Name), tpt)
+	template, err := pkg.ParseTemplateFromEmbed(pkg.GetFileNameByTechstack(p.TechstackName), tpt)
 	if err != nil {
 		return err
 	}
@@ -344,6 +357,7 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 	if err := pkg.WriteFileToBillyFs(p.FileSystem, ".dockerignore", []byte(dockerignoreTemplate)); err != nil {
 		return err
 	}
+
 	// build docker image
 	if err = d.buildDockerImage(ctx, p.FileSystem, p.ImageName, map[string]string{}); err != nil {
 		return err
