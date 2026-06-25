@@ -8,16 +8,17 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/docker/cli/cli/command/image/build"
+	"github.com/go-git/go-billy/v6"
+	"github.com/go-git/go-billy/v6/memfs"
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/client"
 	"github.com/go-git/go-git/v6/plumbing/transport/http"
+	"github.com/go-git/go-git/v6/storage/memory"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -49,7 +50,7 @@ type (
 		buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error
 		DeleteDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) error
 		ensureDockerNetwork(ctx context.Context, networkName string) error
-		buildDockerImage(ctx context.Context, pPath string, imageTag string, buildArgs map[string]string) error
+		buildDockerImage(ctx context.Context, fs billy.Filesystem, imageTag string, buildArgs map[string]string) error
 	}
 	deploymentService struct {
 		gs       GithubAppService
@@ -104,7 +105,7 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 		return err
 	}
 
-	var cn, in, activeContainerName, toBeDeletedPath string
+	var cn, in, activeContainerName string
 
 	// begin transaction
 	if err := d.tm.WithTx(ctx, func(tx pgx.Tx) error {
@@ -136,22 +137,13 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 		if err != nil {
 			return err
 		}
-		tmpPath := fmt.Sprintf(
-			"tmp/builds/%s/%s/tmp",
-			deployment.Name,
-			params.Branch,
-		)
-		toBeDeletedPath = fmt.Sprintf(
-			"tmp/builds/%s/%s",
-			deployment.Name,
-			params.Branch,
-		)
 
 		it, err := d.gi.CreateInstallationToken(ctx, installationID)
 		if err != nil {
 			return err
 		}
-		repo, err := d.gitInfra.PlainClone(tmpPath, &git.CloneOptions{
+		fs := memfs.New()
+		repo, err := d.gitInfra.Clone(memory.NewStorage(), fs, &git.CloneOptions{
 			URL: deployment.GitRemoteUrl,
 			ClientOptions: []client.Option{
 				client.WithHTTPAuth(&http.BasicAuth{
@@ -170,16 +162,6 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 		commitId, commitMsg, version, err := pkg.ExtractRepoMetaData(repo)
 		if err != nil {
 			return err
-		}
-
-		finalPath := fmt.Sprintf(
-			"tmp/builds/%s/%s/%s",
-			deployment.Name,
-			params.Branch,
-			version,
-		)
-		if err := os.Rename(tmpPath, finalPath); err != nil {
-			return fmt.Errorf("failed to rename %s to %s: %w", tmpPath, finalPath, err)
 		}
 
 		// container name
@@ -206,8 +188,8 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 		// build and run new container
 		if err := d.buildAndRunContainer(ctx, schema.BuildAndRunContainerParams{
 			DepQuery:              depQuery,
-			Path:                  finalPath,
 			DeploymentId:          depId,
+			FileSystem:            fs,
 			ContainerName:         cn,
 			ImageName:             in,
 			BuildCommand:          params.BuildCommand,
@@ -283,17 +265,12 @@ func (d *deploymentService) CreateNewDeploymentVersionByDeploymentName(ctx conte
 
 		return nil
 	}); err != nil {
-		if toBeDeletedPath != "" {
-			if err := pkg.DeleteDir(toBeDeletedPath); err != nil {
-				return err
-			}
-		}
+
 		// stop and remove built container
 		if cn != "" {
 			timeout := 10 * time.Second
 			timeoutInt := int(timeout)
 			if _, err := d.conRep.ContainerStop(ctx, cn, moby_client.ContainerStopOptions{
-				Signal:  "",
 				Timeout: &timeoutInt,
 			}); err != nil {
 				if strings.Contains(err.Error(), "is not running") {
@@ -358,17 +335,17 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 		return err
 	}
 
-	dockerfilePath := filepath.Join(p.Path, "Dockerfile")
-	if err := pkg.WriteFile(dockerfilePath, []byte(template)); err != nil {
+	// dockerfilePath := filepath.Join(p.Path, "Dockerfile")
+	if err := pkg.WriteFileToBillyFs(p.FileSystem, "Dockerfile", []byte(template)); err != nil {
 		return err
 	}
 
-	dockerignorePath := filepath.Join(p.Path, ".dockerignore")
-	if err := pkg.WriteFile(dockerignorePath, []byte(dockerignoreTemplate)); err != nil {
+	// dockerignorePath := filepath.Join(p.Path, ".dockerignore")
+	if err := pkg.WriteFileToBillyFs(p.FileSystem, ".dockerignore", []byte(dockerignoreTemplate)); err != nil {
 		return err
 	}
 	// build docker image
-	if err = d.buildDockerImage(ctx, p.Path, p.ImageName, map[string]string{}); err != nil {
+	if err = d.buildDockerImage(ctx, p.FileSystem, p.ImageName, map[string]string{}); err != nil {
 		return err
 	}
 	// network name
@@ -576,9 +553,6 @@ func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, userI
 	if err != nil {
 		return nil, err
 	}
-	// if len(deployments) == 0 {
-	// 	return nil, pkg.ErrNotFound
-	// }
 	var res []schema.GetDeploymentData
 	for _, dep := range deployments {
 		res = append(res, schema.GetDeploymentData{
@@ -601,13 +575,13 @@ func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, userI
 }
 
 // buildDockerImage implements [DeploymentService].
-func (d *deploymentService) buildDockerImage(ctx context.Context, pPath string, imageTag string, buildArgs map[string]string) error {
-	excludes, err := build.ReadDockerignore(pPath)
+func (d *deploymentService) buildDockerImage(ctx context.Context, fs billy.Filesystem, imageTag string, buildArgs map[string]string) error {
+	excludes, err := pkg.ReadDockerignore(fs)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	excludes = append(excludes, "!"+filepath.ToSlash("Dockerfile"))
-	buildCtx, err := pkg.TarDirectory(pPath, excludes)
+	// excludes = append(excludes, "!"+filepath.ToSlash("Dockerfile"))
+	buildCtx, err := pkg.TarFilesystem(fs, excludes)
 	if err != nil {
 		return err
 	}

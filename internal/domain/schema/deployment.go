@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"github.com/go-git/go-billy/v6"
 	"github.com/jackc/pgx/v5/pgtype"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 )
@@ -40,7 +41,7 @@ type (
 	BuildAndRunContainerParams struct {
 		DepQuery              *deployment_repository.Queries
 		ProjectName           string
-		Path                  string
+		FileSystem            billy.Filesystem
 		BuildCommand          string
 		BuildFolder           string
 		DeploymentId          pgtype.UUID
@@ -51,6 +52,7 @@ type (
 		Port                  []Port
 		DeploymentTechstackID int32
 		MainFileName          string
+		// Path                  string
 	}
 )
 type (
