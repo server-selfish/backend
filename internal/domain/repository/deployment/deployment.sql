@@ -10,11 +10,11 @@ SELECT
   COALESCE(
     json_agg(
       DISTINCT jsonb_build_object(
-        "external", cp.external,
-        "internal", cp.internal,
-        "protocol", cp.protocol
+        'external', cp.external,
+        'internal', cp.internal,
+        'protocol', cp.protocol
       )
-    ), '[]'
+    ) FILTER (WHERE cp.external IS NOT NULL), '[]'
   )::jsonb as port,
   dt.name AS techstack_name,
   dt.version AS techstack_version,
@@ -82,7 +82,8 @@ JOIN deployment_techstack dt
   ON dh.deployment_techstack_id = dt.id
 WHERE
   p.user_id = $1
-  AND d.name ILIKE $2
+  AND p.name ILIKE $2
+  AND d.name ILIKE $3
   AND dh.is_active = false
 GROUP BY
   dh.id,
@@ -99,14 +100,34 @@ GROUP BY
 ORDER BY
   COALESCE(dh.updated_at, dh.created_at) DESC;
 
--- name: GetActiveDeploymentHistoryByDeploymentName :one
+-- name: GetActiveDeploymentHistoryDetailByDeploymentName :one
 SELECT
-  dh.id AS deployment_history_id,
-  d.git_remote_url AS remote_url,
-  dh.branch AS branch,
-  dh.commit_id AS commit_id,
-  dh.commit_msg AS commit_message,
-  dh.version AS deployment_version,
+  p.name as project_name,
+  d.id,
+  d.name as deployment_name,
+  d.repository_id,
+  d.git_remote_url,
+  d.installation_id,
+  dh.branch,
+  dh.version,
+  dh.commit_id,
+  dh.build_command,
+  dh.build_folder,
+  dh.run_command,
+  dh.main_file_path,
+  dt.id as techstack_id,
+  dt.name as techstack_name,
+  dt.docker_base_image,
+  dt.docker_runtime_image,
+  c.name as container_name,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        'key', ce.key,
+        'value', ce.value
+      )
+    ) FILTER (WHERE ce.key IS NOT NULL), '[]'
+  )::jsonb as env,
   COALESCE(
     json_agg(
       DISTINCT jsonb_build_object(
@@ -114,42 +135,110 @@ SELECT
         'internal', cp.internal,
         'protocol', cp.protocol
       )
-    ), '[]'
-  )::jsonb as port,
-  dh.build_command AS build_command,
-  dt.id AS techstack_id,
-  dt.name AS techstack_name,
-  dt.version AS techstack_version,
-  c.name as container_name,
-  dh.created_at,
-  dh.updated_at
+    ) FILTER (WHERE cp.external IS NOT NULL), '[]'
+  )::jsonb as port
 FROM deployment_history dh
-JOIN container c
-  ON c.deployment_history_id = dh.id
-JOIN container_port cp
-  ON cp.container_id = c.id
 JOIN deployment d
   ON dh.deployment_id = d.id
 JOIN project p
   ON d.project_id = p.id
 JOIN deployment_techstack dt
   ON dh.deployment_techstack_id = dt.id
+JOIN container c
+  ON c.deployment_history_id = dh.id
+LEFT JOIN container_env ce
+  ON ce.container_id = c.id
+LEFT JOIN container_port cp
+  ON cp.container_id = c.id
 WHERE
   p.user_id = $1
-  AND d.name ILIKE $2
+  AND p.name ILIKE $2
+  AND d.name ILIKE $3
   AND dh.is_active = true
 GROUP BY
+  p.id,
+  d.id,
   dh.id,
-  d.git_remote_url,
-  dh.branch,
-  dh.commit_id,
-  dh.commit_msg,
-  dh.version,
-  dh.build_command,
   dt.id,
-  dt.name,
-  dt.version,
+  c.id
+ORDER BY
+  COALESCE(dh.updated_at, dh.created_at) DESC;
+
+-- name: GetActiveDeploymentHistoryByDeploymentName :one
+SELECT
+  gi.account_login as github_account,
+  d.name as deployment_name,
+  d.description as deployment_description,
+  d.installation_id as installation_id,
+  d.git_remote_url AS remote_url,
+  dh.id AS deployment_history_id,
+  dh.branch AS branch,
+  dh.commit_id AS commit_id,
+  dh.commit_msg AS commit_message,
+  dh.version AS deployment_version,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        'key', ce.key,
+        'value', ce.value
+      )
+    ) FILTER (WHERE ce.key IS NOT NULL), '[]'
+  )::jsonb as env,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        'external', cp.external,
+        'internal', cp.internal,
+        'protocol', cp.protocol
+      )
+    ) FILTER (WHERE cp.external IS NOT NULL), '[]'
+  )::jsonb as port,
+  dh.build_command AS build_command,
+  dh.build_folder AS build_folder,
+  dh.main_file_path as main_file_path,
+  dt.id AS techstack_id,
+  dt.name AS techstack_name,
+  dt.version AS techstack_version,
+  c.name as container_name,
+  dh.created_at,
+  d.updated_at as deployment_updated_at,
+  dh.updated_at
+FROM deployment_history dh
+JOIN container c
+  ON c.deployment_history_id = dh.id
+LEFT JOIN container_port cp
+  ON cp.container_id = c.id
+LEFT JOIN container_env ce
+  ON ce.container_id = c.id
+JOIN deployment d
+  ON dh.deployment_id = d.id
+JOIN project p
+  ON d.project_id = p.id
+JOIN deployment_techstack dt
+  ON dh.deployment_techstack_id = dt.id
+JOIN github_installations gi
+  ON d.installation_id = gi.installation_id
+WHERE
+  p.user_id = $1
+  AND p.name ILIKE $2
+  AND d.name ILIKE $3
+  AND dh.is_active = true
+GROUP BY
+  d.id,
+  dh.id,
+  dt.id,
+  gi.id,
   c.name;
+
+-- name: GetDeploymentHistoryCountByCommitID :one
+SELECT
+  count(*)
+FROM deployment_history dh
+JOIN deployment d
+  ON d.id = dh.deployment_id
+WHERE
+  d.id = $1
+  AND dh.commit_id = $2;
 
 -- name: GetTechstackByTechstackId :one
 SELECT
@@ -234,3 +323,12 @@ WHERE
   p.id = d.project_id
   AND p.user_id = $1
   AND d.id = $2;
+
+-- name: DeleteDeploymentByDeploymentName :exec
+DELETE FROM
+  deployment d
+USING project p
+WHERE
+  p.user_id = $1
+  AND p.name = $2
+  AND d.name = $3;

@@ -41,3 +41,6 @@ tmp
 
 #config
 config*.yaml
+
+#secret file
+.secret

@@ -13,8 +13,8 @@ WHERE
   AND dh.deployment_id = $2;
 
 -- name: CreateContainer :one
-INSERT INTO container (name,deployment_history_id)
-VALUES ($1,$2)
+INSERT INTO container (name,image_name,deployment_history_id)
+VALUES ($1,$2,$3)
 RETURNING id;
 
 -- name: GetContainerByName :one
@@ -30,6 +30,23 @@ JOIN project p
 WHERE
   p.user_id = $1
   AND c.name = $2;
+
+-- name: GetActiveContainerByDelploymentName :one
+SELECT
+	c."name",
+	c.image_name
+FROM container c
+JOIN deployment_history dh
+	ON c.deployment_history_id = dh.id
+JOIN deployment d
+	ON dh.deployment_id =d.id
+JOIN project p
+	ON d.project_id = p.id
+WHERE
+  p.user_id = $1
+	AND p."name"= $2
+	AND d."name"= $3
+	AND dh.is_active IS TRUE;
 
 -- name: CreateContainerEnv :exec
 INSERT INTO public.container_env (

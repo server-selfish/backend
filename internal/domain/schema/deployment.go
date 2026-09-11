@@ -38,6 +38,10 @@ type (
 		BuildFolder           string `json:"build_folder"`
 		MainFileName          string `json:"main_file_name" validate:"required,min=1"`
 	}
+	UpdateDeploymentHistoryToLatestParams struct {
+		ProjectName    string `json:"project_name" validate:"required,min=1"`
+		DeploymentName string `json:"deployment_name" validate:"required,min=1"`
+	}
 	BuildAndRunContainerParams struct {
 		DepQuery              *deployment_repository.Queries
 		ProjectName           string
@@ -57,6 +61,18 @@ type (
 		DockerRuntimeImage    string
 		TechstackName         string
 		// Path                  string
+	}
+	UpdateDeploymentParams struct {
+		ProjectName           string `json:"project_name" validate:"required,min=1"`
+		DeploymentName        string `json:"deployment_name" validate:"required,min=1"`
+		DeploymentDescription string `json:"deployment_description"`
+		Branch                string `json:"branch_name" validate:"required,min=1"`
+		DeploymentTechstackID int32  `json:"techstack_id" validate:"required"`
+		Env                   []ENV  `json:"env"`
+		Port                  []Port `json:"port"`
+		BuildCommand          string `json:"build_command"`
+		BuildFolder           string `json:"build_folder"`
+		MainFileName          string `json:"main_file_name" validate:"required,min=1"`
 	}
 )
 type (
@@ -117,6 +133,21 @@ type (
 	GetTechstackVersion struct {
 		ID      int32  `json:"id"`
 		Version string `json:"version"`
+	}
+	GetDeploymentSettings struct {
+		DeploymentName        string `json:"deployment_name"`
+		DeploymentDescription string `json:"deployment_description"`
+		GithubAccount         string `json:"github_account"`
+		RemoteUrl             string `json:"remote_url"`
+		Branch                string `json:"branch"`
+		Port                  []Port `json:"port"`
+		Env                   []ENV  `json:"env"`
+		BuildCommand          string `json:"build_command"`
+		BuildFolder           string `json:"build_folder"`
+		MainFilePath          string `json:"main_file_path"`
+		TechstackID           int32  `json:"techstack_id"`
+		TechstackName         string `json:"techstack_name"`
+		UpdatedAt             string `json:"updated_at"`
 	}
 )
 

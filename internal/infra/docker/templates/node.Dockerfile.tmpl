@@ -21,7 +21,6 @@ RUN {{.BuildCommand}}
 FROM {{.DockerRuntimeImage}}
 
 WORKDIR /app
-ENV NODE_ENV=production
 
 COPY --from=builder /app/package*.json ./
 RUN \
@@ -31,7 +30,7 @@ RUN \
   else echo "No lockfile found." && exit 1; \
   fi
 
-COPY --from=builder /app/dist ./{{.BuildFolder}}
+COPY --from=builder /app/dist ./
 COPY --from=builder /app/public ./public
 
-CMD {{.Command}}
+CMD {{.RunCommand}}

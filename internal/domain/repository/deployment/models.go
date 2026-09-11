@@ -11,6 +11,7 @@ import (
 type Container struct {
 	ID                  pgtype.UUID
 	Name                string
+	ImageName           string
 	DeploymentHistoryID int32
 	CreatedAt           pgtype.Timestamptz
 	UpdatedAt           pgtype.Timestamptz
@@ -38,6 +39,7 @@ type ContainerPort struct {
 type Deployment struct {
 	ID             pgtype.UUID
 	Name           string
+	Description    pgtype.Text
 	GitRemoteUrl   string
 	ProjectID      pgtype.UUID
 	InstallationID int64
@@ -71,6 +73,17 @@ type DeploymentTechstack struct {
 	DockerRuntimeImage string
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
+}
+
+type GithubInstallation struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	InstallationID int64
+	AccountLogin   pgtype.Text
+	AccountID      pgtype.Int8
+	TargetType     pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type Project struct {

@@ -38,12 +38,16 @@ func RegisterProjectRoutes(r chi.Router, ph ProjectHandler) {
 func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 	r.Get("/deployment", dh.GetDeploymentsByProjectId)
 	r.Get("/deployment/{id}", dh.GetDeploymentByDeploymentId)
-	r.Get("/deployment/active/{name}", dh.GetActiveDeploymenByDeploymentName)
-	r.Get("/deployment/history/{name}", dh.GetHistoryDeploymentByDeploymentName)
+	r.Get("/deployment/active", dh.GetActiveDeploymentByDeploymentName)
+	r.Get("/deployment/history", dh.GetHistoryDeploymentByDeploymentName)
 	r.Get("/deployment/techstack", dh.GetTechstackName)
 	r.Get("/deployment/techstack/{techstack_name}/version", dh.GetTechstackVersionByName)
-	r.Post("/deployment", dh.CreateNewDeploymentVersionByDeploymentName)
+	r.Get("/deployment/settings", dh.GetDeploymentSettings)
+	r.Post("/deployment", dh.CreateNewDeployment)
+	r.Post("/deployment/deploy", dh.UpdateDeploymentVersionToLatest)
 	// r.Post("/deployment/version", dh.CreateNewDeploymentVersionByDeploymentId)
+	r.Patch("/deployment", dh.UpdateDeployment)
+	r.Delete("/deployment", dh.DeleteDeploymentByDeploymentName)
 	r.Delete("/deployment/{id}", dh.DeleteDeploymentByDeploymentId)
 }
 

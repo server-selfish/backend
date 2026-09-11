@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS project(
 CREATE TABLE IF NOT EXISTS deployment(
 	id UUID PRIMARY KEY DEFAULT uuidv7(),
   name VARCHAR NOT NULL,
+  description TEXT,
   git_remote_url VARCHAR NOT NULL,
   project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
   installation_id BIGINT NOT NULL REFERENCES github_installations(installation_id) ON DELETE CASCADE,

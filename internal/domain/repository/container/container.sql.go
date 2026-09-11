@@ -12,18 +12,19 @@ import (
 )
 
 const createContainer = `-- name: CreateContainer :one
-INSERT INTO container (name,deployment_history_id)
-VALUES ($1,$2)
+INSERT INTO container (name,image_name,deployment_history_id)
+VALUES ($1,$2,$3)
 RETURNING id
 `
 
 type CreateContainerParams struct {
 	Name                string
+	ImageName           string
 	DeploymentHistoryID int32
 }
 
 func (q *Queries) CreateContainer(ctx context.Context, arg CreateContainerParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, createContainer, arg.Name, arg.DeploymentHistoryID)
+	row := q.db.QueryRow(ctx, createContainer, arg.Name, arg.ImageName, arg.DeploymentHistoryID)
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -96,9 +97,45 @@ func (q *Queries) CreateContainerPort(ctx context.Context, arg CreateContainerPo
 	return err
 }
 
+const getActiveContainerByDelploymentName = `-- name: GetActiveContainerByDelploymentName :one
+SELECT
+	c."name",
+	c.image_name
+FROM container c
+JOIN deployment_history dh
+	ON c.deployment_history_id = dh.id
+JOIN deployment d
+	ON dh.deployment_id =d.id
+JOIN project p
+	ON d.project_id = p.id
+WHERE
+  p.user_id = $1
+	AND p."name"= $2
+	AND d."name"= $3
+	AND dh.is_active IS TRUE
+`
+
+type GetActiveContainerByDelploymentNameParams struct {
+	UserID pgtype.UUID
+	Name   string
+	Name_2 string
+}
+
+type GetActiveContainerByDelploymentNameRow struct {
+	Name      string
+	ImageName string
+}
+
+func (q *Queries) GetActiveContainerByDelploymentName(ctx context.Context, arg GetActiveContainerByDelploymentNameParams) (GetActiveContainerByDelploymentNameRow, error) {
+	row := q.db.QueryRow(ctx, getActiveContainerByDelploymentName, arg.UserID, arg.Name, arg.Name_2)
+	var i GetActiveContainerByDelploymentNameRow
+	err := row.Scan(&i.Name, &i.ImageName)
+	return i, err
+}
+
 const getActiveDeploymentHistoryContainerByDeploymentId = `-- name: GetActiveDeploymentHistoryContainerByDeploymentId :one
 SELECT
-  c.id, c.name, c.deployment_history_id, c.created_at, c.updated_at
+  c.id, c.name, c.image_name, c.deployment_history_id, c.created_at, c.updated_at
 FROM container c
 JOIN deployment_history dh
   ON dh.id = c.deployment_history_id
@@ -122,6 +159,7 @@ func (q *Queries) GetActiveDeploymentHistoryContainerByDeploymentId(ctx context.
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.ImageName,
 		&i.DeploymentHistoryID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -131,7 +169,7 @@ func (q *Queries) GetActiveDeploymentHistoryContainerByDeploymentId(ctx context.
 
 const getContainerByName = `-- name: GetContainerByName :one
 SELECT
-  c.id, c.name, c.deployment_history_id, c.created_at, c.updated_at
+  c.id, c.name, c.image_name, c.deployment_history_id, c.created_at, c.updated_at
 FROM container c
 JOIN deployment_history dh
   ON dh.id = c.deployment_history_id
@@ -155,6 +193,7 @@ func (q *Queries) GetContainerByName(ctx context.Context, arg GetContainerByName
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.ImageName,
 		&i.DeploymentHistoryID,
 		&i.CreatedAt,
 		&i.UpdatedAt,

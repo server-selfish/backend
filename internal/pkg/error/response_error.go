@@ -37,7 +37,10 @@ var (
 
 // deployment
 var (
-	ErrMissingTechstackNameInParams = errors.New("techstack name is missing in params")
+	ErrMissingTechstackNameInParams  = errors.New("techstack name is missing in params")
+	ErrMissingHistoryIDInParams      = errors.New("id is missing in params")
+	ErrMissingProjectNameInParams    = errors.New("project_name is missing in params")
+	ErrMissingDeploymentNameInParams = errors.New("deployment_name is missing in params")
 )
 
 // monitoring

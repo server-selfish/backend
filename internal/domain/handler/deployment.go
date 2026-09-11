@@ -17,13 +17,16 @@ type (
 	DeploymentHandler interface {
 		GetDeploymentsByProjectId(w http.ResponseWriter, r *http.Request)
 		GetDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
-		GetActiveDeploymenByDeploymentName(w http.ResponseWriter, r *http.Request)
+		GetActiveDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request)
 		GetHistoryDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request)
 		GetTechstackName(w http.ResponseWriter, r *http.Request)
 		GetTechstackVersionByName(w http.ResponseWriter, r *http.Request)
-		// CreateDeployment(w http.ResponseWriter, r *http.Request)
-		CreateNewDeploymentVersionByDeploymentName(w http.ResponseWriter, r *http.Request)
+		GetDeploymentSettings(w http.ResponseWriter, r *http.Request)
+		CreateNewDeployment(w http.ResponseWriter, r *http.Request)
+		UpdateDeploymentVersionToLatest(w http.ResponseWriter, r *http.Request)
+		UpdateDeployment(w http.ResponseWriter, r *http.Request)
 		DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request)
+		DeleteDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request)
 	}
 	deploymentHandler struct {
 		ds     service.DeploymentService
@@ -36,6 +39,143 @@ func NewDeploymentHandler(ds service.DeploymentService, logger zerolog.Logger) D
 		ds:     ds,
 		logger: &logger,
 	}
+}
+
+// DeleteDeploymentByDeploymentName implements [DeploymentHandler].
+func (d *deploymentHandler) DeleteDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
+		return
+	}
+
+	projectName := r.URL.Query().Get("project_name")
+	deploymentName := r.URL.Query().Get("deployment_name")
+	if projectName == "" {
+		d.logger.Error().Msg(defined_error.ErrMissingProjectNameInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingProjectNameInParams)
+		return
+	}
+	if deploymentName == "" {
+		d.logger.Error().Msg(defined_error.ErrMissingDeploymentNameInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingDeploymentNameInParams)
+		return
+	}
+
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+	if err := d.ds.DeleteDeploymentByDeploymentName(ctx, ui, projectName, deploymentName); err != nil {
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "deployment deleted", nil)
+}
+
+// UpdateDeploymentData implements [DeploymentHandler].
+func (d *deploymentHandler) UpdateDeployment(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
+		return
+	}
+	req, sc, err, ok := pkg.DecodeAndValidateBody[schema.UpdateDeploymentParams](w, r, d.logger)
+	if !ok {
+		pkg.ReturnError(w, sc, err)
+		return
+	}
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+	if err := d.ds.UpdateDeployment(ctx, ui, req); err != nil {
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, err)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "settings updated", nil)
+}
+
+// GetDeploymentSetting implements [DeploymentHandler].
+func (d *deploymentHandler) GetDeploymentSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
+		return
+	}
+
+	projectName := r.URL.Query().Get("project_name")
+	deploymentName := r.URL.Query().Get("deployment_name")
+	if projectName == "" {
+		d.logger.Error().Msg(defined_error.ErrMissingProjectNameInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingProjectNameInParams)
+		return
+	}
+	if deploymentName == "" {
+		d.logger.Error().Msg(defined_error.ErrMissingDeploymentNameInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingDeploymentNameInParams)
+		return
+	}
+
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+	s, err := d.ds.GetDeploymentSettings(ctx, ui, projectName, deploymentName)
+	if err != nil {
+		d.logger.Error().Msg(err.Error())
+		switch {
+		case errors.Is(err, defined_error.ErrActiveDeploymentNotFound):
+			pkg.ReturnError(w, http.StatusNotFound, err)
+		default:
+			pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		}
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "fetch setting success", s)
+}
+
+// UpdateDeploymentVersionToLatest implements [DeploymentHandler].
+func (d *deploymentHandler) UpdateDeploymentVersionToLatest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
+		return
+	}
+
+	req, sc, err, ok := pkg.DecodeAndValidateBody[schema.UpdateDeploymentHistoryToLatestParams](w, r, d.logger)
+	if !ok {
+		pkg.ReturnError(w, sc, err)
+		return
+	}
+	ui, err := pkg.StringToPgUUID(userID)
+	if err != nil {
+		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+	if err := d.ds.UpdateDeploymentVersionToLatest(ctx, ui, req.ProjectName, req.DeploymentName); err != nil {
+		d.logger.Error().Msg(err.Error())
+		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		return
+	}
+	pkg.ReturnSuccess(w, http.StatusOK, "new version deployed", nil)
 }
 
 // GetTechstackName implements [DeploymentHandler].
@@ -69,7 +209,7 @@ func (d *deploymentHandler) GetTechstackVersionByName(w http.ResponseWriter, r *
 }
 
 // CreateNewDeploymentVersion implements [DeploymentHandler].
-func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentName(w http.ResponseWriter, r *http.Request) {
+func (d *deploymentHandler) CreateNewDeployment(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
@@ -96,40 +236,13 @@ func (d *deploymentHandler) CreateNewDeploymentVersionByDeploymentName(w http.Re
 		return
 	}
 
-	if err := d.ds.CreateNewDeploymentVersionByDeploymentName(ctx, ui, ii, req); err != nil {
+	if err := d.ds.CreateNewDeployment(ctx, ui, ii, req); err != nil {
 		d.logger.Error().Msg(err.Error())
-		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
+		pkg.ReturnError(w, http.StatusInternalServerError, err)
 		return
 	}
-	pkg.ReturnSuccess(w, http.StatusOK, "new version deployed", nil)
+	pkg.ReturnSuccess(w, http.StatusOK, "deployment deployed", nil)
 }
-
-// CreateDeployment implements [DeploymentHandler].
-// func (d *deploymentHandler) CreateDeployment(w http.ResponseWriter, r *http.Request) {
-// 	req, sc, err, ok := pkg.DecodeAndValidateBody[schema.CreateDeploymentParams](w, r, d.logger)
-// 	if !ok {
-// 		pkg.ReturnError(w, sc, err)
-// 		return
-// 	}
-// 	ctx := r.Context()
-// 	id, err := pkg.StringToPgUUID(req.ProjectID)
-// 	if err != nil {
-// 		d.logger.Error().Err(err).Msg(defined_error.ErrStringUUIDTypeCasting.Error())
-// 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
-// 		return
-// 	}
-// 	if err := d.ds.CreateDeployment(ctx, deployment_repository.CreateDeploymentParams{
-// 		Name:           req.Name,
-// 		ProjectID:      id,
-// 		GitRemoteUrl:   req.GitRemoteUrl,
-// 		InstallationID: req.InstallationID,
-// 	}); err != nil {
-// 		d.logger.Error().Msg(err.Error())
-// 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
-// 		return
-// 	}
-// 	pkg.ReturnSuccess(w, http.StatusOK, "deployment created", nil)
-// }
 
 // DeleteDeploymentByDeploymentId implements [DeploymentHandler].
 func (d *deploymentHandler) DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
@@ -180,10 +293,16 @@ func (d *deploymentHandler) GetHistoryDeploymentByDeploymentName(w http.Response
 		return
 	}
 
-	name := chi.URLParam(r, "name")
-	if name == "" {
-		d.logger.Error().Msg(defined_error.ErrMissingIdInParams.Error())
-		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingIdInParams)
+	projectName := r.URL.Query().Get("project_name")
+	deploymentName := r.URL.Query().Get("deployment_name")
+	if projectName == "" {
+		d.logger.Error().Msg(defined_error.ErrMissingProjectNameInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingProjectNameInParams)
+		return
+	}
+	if deploymentName == "" {
+		d.logger.Error().Msg(defined_error.ErrMissingDeploymentNameInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingDeploymentNameInParams)
 		return
 	}
 
@@ -194,7 +313,7 @@ func (d *deploymentHandler) GetHistoryDeploymentByDeploymentName(w http.Response
 		return
 	}
 
-	deployments, err := d.ds.GetHistoryDeploymentByDeploymentName(ctx, ui, name)
+	deployments, err := d.ds.GetHistoryDeploymentByDeploymentName(ctx, ui, projectName, deploymentName)
 	if err != nil {
 		d.logger.Error().Msg(err.Error())
 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
@@ -204,7 +323,7 @@ func (d *deploymentHandler) GetHistoryDeploymentByDeploymentName(w http.Response
 }
 
 // GetActiveDeploymenByDeploymentName implements [DeploymentHandler].
-func (d *deploymentHandler) GetActiveDeploymenByDeploymentName(w http.ResponseWriter, r *http.Request) {
+func (d *deploymentHandler) GetActiveDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
 	if !ok {
@@ -213,10 +332,16 @@ func (d *deploymentHandler) GetActiveDeploymenByDeploymentName(w http.ResponseWr
 		return
 	}
 
-	name := chi.URLParam(r, "name")
-	if name == "" {
-		d.logger.Error().Msg(defined_error.ErrMissingIdInParams.Error())
-		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingIdInParams)
+	projectName := r.URL.Query().Get("project_name")
+	deploymentName := r.URL.Query().Get("deployment_name")
+	if projectName == "" {
+		d.logger.Error().Msg(defined_error.ErrMissingProjectNameInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingProjectNameInParams)
+		return
+	}
+	if deploymentName == "" {
+		d.logger.Error().Msg(defined_error.ErrMissingDeploymentNameInParams.Error())
+		pkg.ReturnError(w, http.StatusBadRequest, defined_error.ErrMissingDeploymentNameInParams)
 		return
 	}
 
@@ -227,7 +352,7 @@ func (d *deploymentHandler) GetActiveDeploymenByDeploymentName(w http.ResponseWr
 		return
 	}
 
-	deployment, err := d.ds.GetActiveDeploymentByDeploymentName(ctx, ui, name)
+	deployment, err := d.ds.GetActiveDeploymentByDeploymentName(ctx, ui, projectName, deploymentName)
 	if err != nil {
 		d.logger.Error().Msg(err.Error())
 		switch {

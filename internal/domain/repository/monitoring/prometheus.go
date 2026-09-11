@@ -68,7 +68,7 @@ func (p prometheusRepository) GetCPUUsage(ctx context.Context, params schema.Get
 
 // GetIORead implements [PrometheusRepository].
 func (p prometheusRepository) GetIORead(ctx context.Context, params schema.GetQueryRangePrometheusRepositoryParams) ([]schema.MetricsSample, error) {
-	q := fmt.Sprintf(`rate(container_fs_reads_bytes_total{name="%s"}[5m])`, params.ContainerName)
+	q := fmt.Sprintf(`sum(rate(container_fs_reads_bytes_total{name="%s"}[5m]))`, params.ContainerName)
 	res, _, err := p.pi.QueryRange(
 		ctx,
 		q,
@@ -105,7 +105,7 @@ func (p prometheusRepository) GetIORead(ctx context.Context, params schema.GetQu
 
 // GetIOWrite implements [PrometheusRepository].
 func (p prometheusRepository) GetIOWrite(ctx context.Context, params schema.GetQueryRangePrometheusRepositoryParams) ([]schema.MetricsSample, error) {
-	q := fmt.Sprintf(`rate(container_fs_writes_bytes_total{name="%s"}[5m])`, params.ContainerName)
+	q := fmt.Sprintf(`sum(rate(container_fs_writes_bytes_total{name="%s"}[5m]))`, params.ContainerName)
 	res, _, err := p.pi.QueryRange(
 		ctx,
 		q,

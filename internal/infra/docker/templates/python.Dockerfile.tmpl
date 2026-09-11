@@ -17,7 +17,7 @@ FROM {{.DockerRuntimeImage}}
 
 WORKDIR /app
 
-COPY --from=builder /app /app
+COPY --from=builder /app ./
 COPY --from=builder /install /usr/local
 
-CMD {{.Command}}
+CMD {{.RunCommand}}
