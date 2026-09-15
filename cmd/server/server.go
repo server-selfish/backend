@@ -78,9 +78,12 @@ func (s *Server) Run() {
 				e := os.Getenv("ENV")
 				switch e {
 				case "production":
-					if err := srv.ListenAndServeTLS("./config/cert/server.crt", "./config/cert/server.key"); err != nil && err != http.ErrServerClosed {
+					if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 						logger.Fatal().Err(err).Msg("Failed to listen and serve http server")
 					}
+					// if err := srv.ListenAndServeTLS("./config/cert/server.crt", "./config/cert/server.key"); err != nil && err != http.ErrServerClosed {
+					// 	logger.Fatal().Err(err).Msg("Failed to listen and serve http server")
+					// }
 				default:
 					type routeEntry struct {
 						method string
@@ -120,20 +123,6 @@ func (s *Server) Run() {
 				}
 			}()
 			<-httpServerReady
-
-			// if s.ServerReady != nil {
-			// 	for range 50 {
-			// 		conn, err := net.DialTimeout("tcp", s.Address, 100*time.Millisecond)
-			// 		if err == nil {
-			// 			if err := conn.Close(); err != nil {
-			// 				logger.Fatal().Err(err).Msg("establish check connection failed to close")
-			// 			}
-			// 			s.ServerReady <- true
-			// 			break
-			// 		}
-			// 		time.Sleep(100 * time.Millisecond)
-			// 	}
-			// }
 
 			logger.Info().Msgf("HTTP Server Starting in port %s", s.Address)
 			<-appCtx.Done()
