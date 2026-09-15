@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/moby/moby/client"
 	"github.com/rs/zerolog"
+	"github.com/server-selfish/backend/config/otel"
 	"github.com/server-selfish/backend/internal/domain/handler"
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/valkey-io/valkey-go"
@@ -28,6 +29,7 @@ func (s *Server) Run() {
 	err := s.Container.Invoke(
 		func(
 			logger zerolog.Logger,
+			otelLogs *otel.Logs,
 			r chi.Router,
 			cache valkey.Client,
 			db *pgxpool.Pool,
@@ -135,6 +137,9 @@ func (s *Server) Run() {
 
 			if err := srv.Shutdown(shutdownCtx); err != nil {
 				logger.Fatal().Err(err).Msg("HTTP Server forced to shutdown")
+			}
+			if err := otelLogs.Shutdown(); err != nil {
+				logger.Error().Err(err).Msg("Failed to flush otel logs")
 			}
 			logger.Info().Msg("Server exiting...")
 			close(httpServerDone)

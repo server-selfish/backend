@@ -7,6 +7,7 @@ import (
 	docker_client "github.com/server-selfish/backend/config/docker"
 	"github.com/server-selfish/backend/config/logger"
 	"github.com/server-selfish/backend/config/monitoring"
+	"github.com/server-selfish/backend/config/otel"
 	"github.com/server-selfish/backend/config/router"
 	"github.com/server-selfish/backend/config/storage"
 	"github.com/server-selfish/backend/internal/domain/handler"
@@ -30,6 +31,11 @@ import (
 
 func BuildContainer() *dig.Container {
 	container := dig.New()
+
+	// otel logs pipeline (degrades to stdout-only when OTLP is unavailable)
+	if err := container.Provide(otel.NewLogs); err != nil {
+		panic("Failed to provide otel logs: " + err.Error())
+	}
 
 	// logger
 	if err := container.Provide(logger.NewLogger); err != nil {
