@@ -808,16 +808,17 @@ func (d *deploymentService) DeleteDeploymentByDeploymentName(ctx context.Context
 		Name_2: deploymentName,
 	})
 	if err != nil {
-
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
+		d.log.Warn().Msgf("failed to get container: %v", err)
 	}
 	// stop, container
 	if _, err := d.conRep.ContainerStop(ctx, cnt.Name, moby_client.ContainerStopOptions{}); err != nil {
 		if !errdefs.IsNotFound(err) {
 			return err
 		}
+		d.log.Warn().Msgf("Container is not found: %v", err)
 	}
 	if err := d.dr.DeleteDeploymentByDeploymentName(ctx, deployment_repository.DeleteDeploymentByDeploymentNameParams{
 		UserID: userId,
@@ -825,7 +826,7 @@ func (d *deploymentService) DeleteDeploymentByDeploymentName(ctx context.Context
 		Name_2: deploymentName,
 	}); err != nil {
 		if _, cErr := d.conRep.ContainerStart(ctx, cnt.Name, moby_client.ContainerStartOptions{}); cErr != nil {
-			d.log.Err(cErr).Msg("error to start container")
+			d.log.Warn().Msgf("error to start container: %v", cErr)
 		}
 		return err
 	}
