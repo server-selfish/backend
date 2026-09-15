@@ -89,6 +89,131 @@ func (q *Queries) DeleteDeploymentByDeploymentName(ctx context.Context, arg Dele
 	return err
 }
 
+const getActiveDeploymentDetailByDeploymentName = `-- name: GetActiveDeploymentDetailByDeploymentName :one
+SELECT
+  p.name as project_name,
+  d.id,
+  d.name as deployment_name,
+  d.description as deployment_description,
+  d.repository_id,
+  d.git_remote_url,
+  d.installation_id,
+  dh.branch,
+  dh.version,
+  dh.commit_id,
+  dh.build_command,
+  dh.build_folder,
+  dh.run_command,
+  dh.main_file_path,
+  dt.id as techstack_id,
+  dt.name as techstack_name,
+  dt.docker_base_image,
+  dt.docker_runtime_image,
+  c.name as container_name,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        'key', ce.key,
+        'value', ce.value
+      )
+    ) FILTER (WHERE ce.key IS NOT NULL), '[]'
+  )::jsonb as env,
+  COALESCE(
+    json_agg(
+      DISTINCT jsonb_build_object(
+        'external', cp.external,
+        'internal', cp.internal,
+        'protocol', cp.protocol
+      )
+    ) FILTER (WHERE cp.external IS NOT NULL), '[]'
+  )::jsonb as port
+FROM deployment_history dh
+JOIN deployment d
+  ON dh.deployment_id = d.id
+JOIN project p
+  ON d.project_id = p.id
+JOIN deployment_techstack dt
+  ON dh.deployment_techstack_id = dt.id
+JOIN container c
+  ON c.deployment_history_id = dh.id
+LEFT JOIN container_env ce
+  ON ce.container_id = c.id
+LEFT JOIN container_port cp
+  ON cp.container_id = c.id
+WHERE
+  p.user_id = $1
+  AND p.name ILIKE $2
+  AND d.name ILIKE $3
+  AND dh.is_active = true
+GROUP BY
+  p.id,
+  d.id,
+  dh.id,
+  dt.id,
+  c.id
+ORDER BY
+  COALESCE(dh.updated_at, dh.created_at) DESC
+`
+
+type GetActiveDeploymentDetailByDeploymentNameParams struct {
+	UserID pgtype.UUID
+	Name   string
+	Name_2 string
+}
+
+type GetActiveDeploymentDetailByDeploymentNameRow struct {
+	ProjectName           string
+	ID                    pgtype.UUID
+	DeploymentName        string
+	DeploymentDescription pgtype.Text
+	RepositoryID          int32
+	GitRemoteUrl          string
+	InstallationID        int64
+	Branch                string
+	Version               string
+	CommitID              string
+	BuildCommand          pgtype.Text
+	BuildFolder           pgtype.Text
+	RunCommand            pgtype.Text
+	MainFilePath          pgtype.Text
+	TechstackID           int32
+	TechstackName         string
+	DockerBaseImage       string
+	DockerRuntimeImage    string
+	ContainerName         string
+	Env                   []byte
+	Port                  []byte
+}
+
+func (q *Queries) GetActiveDeploymentDetailByDeploymentName(ctx context.Context, arg GetActiveDeploymentDetailByDeploymentNameParams) (GetActiveDeploymentDetailByDeploymentNameRow, error) {
+	row := q.db.QueryRow(ctx, getActiveDeploymentDetailByDeploymentName, arg.UserID, arg.Name, arg.Name_2)
+	var i GetActiveDeploymentDetailByDeploymentNameRow
+	err := row.Scan(
+		&i.ProjectName,
+		&i.ID,
+		&i.DeploymentName,
+		&i.DeploymentDescription,
+		&i.RepositoryID,
+		&i.GitRemoteUrl,
+		&i.InstallationID,
+		&i.Branch,
+		&i.Version,
+		&i.CommitID,
+		&i.BuildCommand,
+		&i.BuildFolder,
+		&i.RunCommand,
+		&i.MainFilePath,
+		&i.TechstackID,
+		&i.TechstackName,
+		&i.DockerBaseImage,
+		&i.DockerRuntimeImage,
+		&i.ContainerName,
+		&i.Env,
+		&i.Port,
+	)
+	return i, err
+}
+
 const getActiveDeploymentHistoryByDeploymentName = `-- name: GetActiveDeploymentHistoryByDeploymentName :one
 SELECT
   gi.account_login as github_account,
@@ -213,128 +338,6 @@ func (q *Queries) GetActiveDeploymentHistoryByDeploymentName(ctx context.Context
 		&i.CreatedAt,
 		&i.DeploymentUpdatedAt,
 		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getActiveDeploymentHistoryDetailByDeploymentName = `-- name: GetActiveDeploymentHistoryDetailByDeploymentName :one
-SELECT
-  p.name as project_name,
-  d.id,
-  d.name as deployment_name,
-  d.repository_id,
-  d.git_remote_url,
-  d.installation_id,
-  dh.branch,
-  dh.version,
-  dh.commit_id,
-  dh.build_command,
-  dh.build_folder,
-  dh.run_command,
-  dh.main_file_path,
-  dt.id as techstack_id,
-  dt.name as techstack_name,
-  dt.docker_base_image,
-  dt.docker_runtime_image,
-  c.name as container_name,
-  COALESCE(
-    json_agg(
-      DISTINCT jsonb_build_object(
-        'key', ce.key,
-        'value', ce.value
-      )
-    ) FILTER (WHERE ce.key IS NOT NULL), '[]'
-  )::jsonb as env,
-  COALESCE(
-    json_agg(
-      DISTINCT jsonb_build_object(
-        'external', cp.external,
-        'internal', cp.internal,
-        'protocol', cp.protocol
-      )
-    ) FILTER (WHERE cp.external IS NOT NULL), '[]'
-  )::jsonb as port
-FROM deployment_history dh
-JOIN deployment d
-  ON dh.deployment_id = d.id
-JOIN project p
-  ON d.project_id = p.id
-JOIN deployment_techstack dt
-  ON dh.deployment_techstack_id = dt.id
-JOIN container c
-  ON c.deployment_history_id = dh.id
-LEFT JOIN container_env ce
-  ON ce.container_id = c.id
-LEFT JOIN container_port cp
-  ON cp.container_id = c.id
-WHERE
-  p.user_id = $1
-  AND p.name ILIKE $2
-  AND d.name ILIKE $3
-  AND dh.is_active = true
-GROUP BY
-  p.id,
-  d.id,
-  dh.id,
-  dt.id,
-  c.id
-ORDER BY
-  COALESCE(dh.updated_at, dh.created_at) DESC
-`
-
-type GetActiveDeploymentHistoryDetailByDeploymentNameParams struct {
-	UserID pgtype.UUID
-	Name   string
-	Name_2 string
-}
-
-type GetActiveDeploymentHistoryDetailByDeploymentNameRow struct {
-	ProjectName        string
-	ID                 pgtype.UUID
-	DeploymentName     string
-	RepositoryID       int32
-	GitRemoteUrl       string
-	InstallationID     int64
-	Branch             string
-	Version            string
-	CommitID           string
-	BuildCommand       pgtype.Text
-	BuildFolder        pgtype.Text
-	RunCommand         pgtype.Text
-	MainFilePath       pgtype.Text
-	TechstackID        int32
-	TechstackName      string
-	DockerBaseImage    string
-	DockerRuntimeImage string
-	ContainerName      string
-	Env                []byte
-	Port               []byte
-}
-
-func (q *Queries) GetActiveDeploymentHistoryDetailByDeploymentName(ctx context.Context, arg GetActiveDeploymentHistoryDetailByDeploymentNameParams) (GetActiveDeploymentHistoryDetailByDeploymentNameRow, error) {
-	row := q.db.QueryRow(ctx, getActiveDeploymentHistoryDetailByDeploymentName, arg.UserID, arg.Name, arg.Name_2)
-	var i GetActiveDeploymentHistoryDetailByDeploymentNameRow
-	err := row.Scan(
-		&i.ProjectName,
-		&i.ID,
-		&i.DeploymentName,
-		&i.RepositoryID,
-		&i.GitRemoteUrl,
-		&i.InstallationID,
-		&i.Branch,
-		&i.Version,
-		&i.CommitID,
-		&i.BuildCommand,
-		&i.BuildFolder,
-		&i.RunCommand,
-		&i.MainFilePath,
-		&i.TechstackID,
-		&i.TechstackName,
-		&i.DockerBaseImage,
-		&i.DockerRuntimeImage,
-		&i.ContainerName,
-		&i.Env,
-		&i.Port,
 	)
 	return i, err
 }
@@ -746,6 +749,27 @@ type SetNonActiveDeploymentHistoryActiveByDeploymentHistoryIdParams struct {
 
 func (q *Queries) SetNonActiveDeploymentHistoryActiveByDeploymentHistoryId(ctx context.Context, arg SetNonActiveDeploymentHistoryActiveByDeploymentHistoryIdParams) error {
 	_, err := q.db.Exec(ctx, setNonActiveDeploymentHistoryActiveByDeploymentHistoryId, arg.UserID, arg.ID)
+	return err
+}
+
+const updateDeploymentDescriptionByDeploymentId = `-- name: UpdateDeploymentDescriptionByDeploymentId :exec
+UPDATE deployment d
+SET description = $3
+FROM project p
+WHERE
+  p.id = d.project_id
+  AND p.user_id = $1
+  AND d.id = $2
+`
+
+type UpdateDeploymentDescriptionByDeploymentIdParams struct {
+	UserID      pgtype.UUID
+	ID          pgtype.UUID
+	Description pgtype.Text
+}
+
+func (q *Queries) UpdateDeploymentDescriptionByDeploymentId(ctx context.Context, arg UpdateDeploymentDescriptionByDeploymentIdParams) error {
+	_, err := q.db.Exec(ctx, updateDeploymentDescriptionByDeploymentId, arg.UserID, arg.ID, arg.Description)
 	return err
 }
 

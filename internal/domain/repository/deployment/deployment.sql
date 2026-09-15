@@ -100,11 +100,12 @@ GROUP BY
 ORDER BY
   COALESCE(dh.updated_at, dh.created_at) DESC;
 
--- name: GetActiveDeploymentHistoryDetailByDeploymentName :one
+-- name: GetActiveDeploymentDetailByDeploymentName :one
 SELECT
   p.name as project_name,
   d.id,
   d.name as deployment_name,
+  d.description as deployment_description,
   d.repository_id,
   d.git_remote_url,
   d.installation_id,
@@ -332,3 +333,12 @@ WHERE
   p.user_id = $1
   AND p.name = $2
   AND d.name = $3;
+
+-- name: UpdateDeploymentDescriptionByDeploymentId :exec
+UPDATE deployment d
+SET description = $3
+FROM project p
+WHERE
+  p.id = d.project_id
+  AND p.user_id = $1
+  AND d.id = $2;
