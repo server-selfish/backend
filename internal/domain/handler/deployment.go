@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/schema"
-	"github.com/server-selfish/backend/internal/domain/service"
+	"github.com/server-selfish/backend/internal/domain/service/deployment"
 	"github.com/server-selfish/backend/internal/pkg"
 	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 )

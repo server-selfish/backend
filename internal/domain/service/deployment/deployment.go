@@ -5,14 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
-	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/go-git/go-billy/v6"
 	"github.com/go-git/go-billy/v6/memfs"
 	"github.com/go-git/go-git/v6"
@@ -23,16 +21,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/api/types/network"
 	moby_client "github.com/moby/moby/client"
-	"github.com/moby/moby/client/pkg/jsonmessage"
 	"github.com/rs/zerolog"
-	"github.com/server-selfish/backend/internal/constant"
 	cache_repository "github.com/server-selfish/backend/internal/domain/repository/cache"
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
 	"github.com/server-selfish/backend/internal/domain/schema"
+	parentservice "github.com/server-selfish/backend/internal/domain/service"
+	docker_infra "github.com/server-selfish/backend/internal/infra/docker"
 	git_infra "github.com/server-selfish/backend/internal/infra/git"
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	"github.com/server-selfish/backend/internal/pkg"
@@ -58,7 +54,7 @@ type (
 		buildDockerImage(ctx context.Context, fs billy.Filesystem, imageTag string, buildArgs map[string]string) error
 	}
 	deploymentService struct {
-		gs       GithubAppService
+		gs       parentservice.GithubAppService
 		dr       *deployment_repository.Queries
 		cr       *container_repository.Queries
 		tm       pkg.TxManager
@@ -72,7 +68,7 @@ type (
 
 func NewDeploymentService(
 	dr *deployment_repository.Queries,
-	gs GithubAppService,
+	gs parentservice.GithubAppService,
 	cache cache_repository.CacheRepository,
 	cr *container_repository.Queries,
 	tm pkg.TxManager,
@@ -94,56 +90,29 @@ func NewDeploymentService(
 	}
 }
 
-// DeleteDeploymentByName implements [DeploymentService].
-func (d *deploymentService) DeleteDeploymentByDeploymentName(ctx context.Context, userId pgtype.UUID, projectName string, deploymentName string) error {
-	// get container and image
-	cnt, err := d.cr.GetActiveContainerByDelploymentName(ctx, container_repository.GetActiveContainerByDelploymentNameParams{
-		UserID: userId,
-		Name:   projectName,
-		Name_2: deploymentName,
-	})
-	if err != nil {
-		return err
-	}
-	// stop, container
-	if _, err := d.conRep.ContainerStop(ctx, cnt.Name, moby_client.ContainerStopOptions{}); err != nil {
-		return err
-	}
-	if err := d.dr.DeleteDeploymentByDeploymentName(ctx, deployment_repository.DeleteDeploymentByDeploymentNameParams{
-		UserID: userId,
-		Name:   projectName,
-		Name_2: deploymentName,
-	}); err != nil {
-		if _, cErr := d.conRep.ContainerStart(ctx, cnt.Name, moby_client.ContainerStartOptions{}); cErr != nil {
-			d.log.Err(cErr).Msg("error to start container")
-		}
-		return err
-	}
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		// remove container
-		if _, rmErr := d.conRep.ContainerRemove(ctx, cnt.Name, moby_client.ContainerRemoveOptions{}); rmErr != nil {
-			d.log.Err(rmErr).Msg("error to remove container")
-		}
-		// remove image
-		if _, rmiErr := d.conRep.ImageRemove(ctx, cnt.ImageName, moby_client.ImageRemoveOptions{}); rmiErr != nil {
-			d.log.Err(rmiErr).Msg("error to remove container")
-		}
-	})
-	wg.Wait()
-	return nil
-}
-
 // UpdateDeployment implements [DeploymentService].
 func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.UUID, params schema.UpdateDeploymentParams) error {
 	prevActiveData, err :=
-		d.dr.GetActiveDeploymentHistoryDetailByDeploymentName(ctx, deployment_repository.GetActiveDeploymentHistoryDetailByDeploymentNameParams{
+		d.dr.GetActiveDeploymentDetailByDeploymentName(ctx, deployment_repository.GetActiveDeploymentDetailByDeploymentNameParams{
 			UserID: userID,
 			Name:   params.ProjectName,
 			Name_2: params.DeploymentName,
 		})
 	if err != nil {
 		return err
+	}
+
+	// ponytail: description-only change skips rebuild, single UPDATE
+	onlyDesc, noChange := isOnlyDescriptionChange(prevActiveData, params)
+	if noChange {
+		return nil
+	}
+	if onlyDesc {
+		return d.dr.UpdateDeploymentDescriptionByDeploymentId(ctx, deployment_repository.UpdateDeploymentDescriptionByDeploymentIdParams{
+			UserID:      userID,
+			ID:          prevActiveData.ID,
+			Description: pgtype.Text{String: params.DeploymentDescription, Valid: true},
+		})
 	}
 
 	reps, err := d.gs.ListInstallationRepositories(ctx, userID, prevActiveData.InstallationID)
@@ -191,7 +160,7 @@ func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.
 		if err != nil {
 			return err
 		}
-		commitId, commitMsg, version, err := pkg.ExtractRepoMetaData(repo)
+		commitId, commitMsg, version, err := extractRepoMetaData(repo)
 		if err != nil {
 			return err
 		}
@@ -210,11 +179,10 @@ func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.
 			if err != nil {
 				return err
 			}
-			count++
-			newVersion = fmt.Sprintf("%s-%d", prevActiveData.Version, count)
+			newVersion = nextOverlapVersion(prevActiveData.Version, count)
 		}
-		cn = fmt.Sprintf("%s.%s", cnUUID.String(), pkg.NormalizeDockerName(prevActiveData.DeploymentName))
-		in = fmt.Sprintf("%s:%s", pkg.NormalizeDockerName(prevActiveData.DeploymentName), newVersion)
+		cn = fmt.Sprintf("%s.%s", cnUUID.String(), docker_infra.NormalizeDockerName(prevActiveData.DeploymentName))
+		in = fmt.Sprintf("%s:%s", docker_infra.NormalizeDockerName(prevActiveData.DeploymentName), newVersion)
 		// deactivate + stop & remove container of active version
 		if err := depQuery.SetActiveDeploymentHistoryNonActiveByDeploymentId(ctx, deployment_repository.SetActiveDeploymentHistoryNonActiveByDeploymentIdParams{
 			UserID:       userID,
@@ -233,7 +201,7 @@ func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.
 		}
 
 		mainFilePath := fmt.Sprintf("%s/%s", params.BuildFolder, params.MainFileName)
-		runCommand := pkg.GetRunCommandByTechstack(techstack.Name, mainFilePath, techstack.DockerBaseImage)
+		runCommand := getRunCommandByTechstack(techstack.Name, mainFilePath, techstack.DockerBaseImage)
 
 		// build and run new container
 		if err := d.buildAndRunContainer(ctx, schema.BuildAndRunContainerParams{
@@ -250,7 +218,7 @@ func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.
 			ProjectName:           params.ProjectName,
 			MainFileName:          params.MainFileName,
 			UserId:                userID,
-			RunCommandJSON:        pkg.ShellToExecForm(runCommand),
+			RunCommandJSON:        shellToExecForm(runCommand),
 			DockerBaseImage:       techstack.DockerBaseImage,
 			DockerRuntimeImage:    techstack.DockerRuntimeImage,
 			TechstackName:         techstack.Name,
@@ -363,56 +331,10 @@ func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.
 	return nil
 }
 
-// GetDeploymentSetting implements [DeploymentService].
-func (d *deploymentService) GetDeploymentSettings(ctx context.Context, userId pgtype.UUID, projectName string, deploymentName string) (schema.GetDeploymentSettings, error) {
-	ad, err := d.dr.GetActiveDeploymentHistoryByDeploymentName(ctx, deployment_repository.GetActiveDeploymentHistoryByDeploymentNameParams{
-		UserID: userId,
-		Name:   projectName,
-		Name_2: deploymentName,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return schema.GetDeploymentSettings{}, defined_error.ErrActiveDeploymentNotFound
-		}
-		return schema.GetDeploymentSettings{}, err
-	}
-
-	var portList []schema.Port
-	if err := json.Unmarshal(ad.Port, &portList); err != nil {
-		return schema.GetDeploymentSettings{}, err
-	}
-	var envList []schema.ENV
-	if err := json.Unmarshal(ad.Env, &envList); err != nil {
-		return schema.GetDeploymentSettings{}, err
-	}
-	t1 := ad.UpdatedAt.Time
-	t2 := ad.DeploymentUpdatedAt.Time
-	latest := t1
-	if t2.After(t1) {
-		latest = t2
-	}
-	res := schema.GetDeploymentSettings{
-		DeploymentName:        ad.DeploymentName,
-		DeploymentDescription: ad.DeploymentDescription.String,
-		GithubAccount:         ad.GithubAccount.String,
-		RemoteUrl:             ad.RemoteUrl,
-		Branch:                ad.Branch,
-		Port:                  portList,
-		Env:                   envList,
-		BuildCommand:          ad.BuildCommand.String,
-		BuildFolder:           ad.BuildFolder.String,
-		MainFilePath:          ad.MainFilePath.String,
-		TechstackID:           ad.TechstackID,
-		TechstackName:         ad.TechstackName,
-		UpdatedAt:             latest.String(),
-	}
-	return res, nil
-}
-
 // UpdateDeploymentVersionToLatest implements [DeploymentService].
 func (d *deploymentService) UpdateDeploymentVersionToLatest(ctx context.Context, userID pgtype.UUID, projectName, deploymentName string) error {
 	prevActiveData, err :=
-		d.dr.GetActiveDeploymentHistoryDetailByDeploymentName(ctx, deployment_repository.GetActiveDeploymentHistoryDetailByDeploymentNameParams{
+		d.dr.GetActiveDeploymentDetailByDeploymentName(ctx, deployment_repository.GetActiveDeploymentDetailByDeploymentNameParams{
 			UserID: userID,
 			Name:   projectName,
 			Name_2: deploymentName,
@@ -474,7 +396,7 @@ func (d *deploymentService) UpdateDeploymentVersionToLatest(ctx context.Context,
 		if err != nil {
 			return err
 		}
-		commitId, commitMsg, version, err := pkg.ExtractRepoMetaData(repo)
+		commitId, commitMsg, version, err := extractRepoMetaData(repo)
 		if err != nil {
 			return err
 		}
@@ -493,11 +415,10 @@ func (d *deploymentService) UpdateDeploymentVersionToLatest(ctx context.Context,
 			if err != nil {
 				return err
 			}
-			count++
-			newVersion = fmt.Sprintf("%s-%d", prevActiveData.Version, count)
+			newVersion = nextOverlapVersion(prevActiveData.Version, count)
 		}
-		cn = fmt.Sprintf("%s.%s", cnUUID.String(), pkg.NormalizeDockerName(prevActiveData.DeploymentName))
-		in = fmt.Sprintf("%s:%s", pkg.NormalizeDockerName(prevActiveData.DeploymentName), newVersion)
+		cn = fmt.Sprintf("%s.%s", cnUUID.String(), docker_infra.NormalizeDockerName(prevActiveData.DeploymentName))
+		in = fmt.Sprintf("%s:%s", docker_infra.NormalizeDockerName(prevActiveData.DeploymentName), newVersion)
 		// deactivate + stop & remove container of active version
 		if err := depQuery.SetActiveDeploymentHistoryNonActiveByDeploymentId(ctx, deployment_repository.SetActiveDeploymentHistoryNonActiveByDeploymentIdParams{
 			UserID:       userID,
@@ -511,7 +432,7 @@ func (d *deploymentService) UpdateDeploymentVersionToLatest(ctx context.Context,
 		}
 
 		mainFilePath := fmt.Sprintf("%s/%s", prevActiveData.BuildFolder.String, prevActiveData.MainFilePath.String)
-		runCommand := pkg.GetRunCommandByTechstack(prevActiveData.TechstackName, mainFilePath, prevActiveData.DockerBaseImage)
+		runCommand := getRunCommandByTechstack(prevActiveData.TechstackName, mainFilePath, prevActiveData.DockerBaseImage)
 
 		// build and run new container
 		if err := d.buildAndRunContainer(ctx, schema.BuildAndRunContainerParams{
@@ -528,7 +449,7 @@ func (d *deploymentService) UpdateDeploymentVersionToLatest(ctx context.Context,
 			ProjectName:           prevActiveData.ProjectName,
 			MainFileName:          prevActiveData.MainFilePath.String,
 			UserId:                userID,
-			RunCommandJSON:        pkg.ShellToExecForm(runCommand),
+			RunCommandJSON:        shellToExecForm(runCommand),
 			DockerBaseImage:       prevActiveData.DockerBaseImage,
 			DockerRuntimeImage:    prevActiveData.DockerRuntimeImage,
 			TechstackName:         prevActiveData.TechstackName,
@@ -715,7 +636,7 @@ func (d *deploymentService) CreateNewDeployment(ctx context.Context, userID pgty
 			return err
 		}
 
-		commitId, commitMsg, version, err := pkg.ExtractRepoMetaData(repo)
+		commitId, commitMsg, version, err := extractRepoMetaData(repo)
 		if err != nil {
 			return err
 		}
@@ -725,8 +646,8 @@ func (d *deploymentService) CreateNewDeployment(ctx context.Context, userID pgty
 		if err != nil {
 			return err
 		}
-		cn = fmt.Sprintf("%s.%s", cnUUID.String(), pkg.NormalizeDockerName(deployment.Name))
-		in = fmt.Sprintf("%s:%s", pkg.NormalizeDockerName(deployment.Name), version)
+		cn = fmt.Sprintf("%s.%s", cnUUID.String(), docker_infra.NormalizeDockerName(deployment.Name))
+		in = fmt.Sprintf("%s:%s", docker_infra.NormalizeDockerName(deployment.Name), version)
 
 		// deactivate + stop & remove container of active version
 		if err := depQuery.SetActiveDeploymentHistoryNonActiveByDeploymentId(ctx, deployment_repository.SetActiveDeploymentHistoryNonActiveByDeploymentIdParams{
@@ -747,7 +668,7 @@ func (d *deploymentService) CreateNewDeployment(ctx context.Context, userID pgty
 		}
 
 		mainFilePath := fmt.Sprintf("%s/%s", params.BuildFolder, params.MainFileName)
-		runCommand := pkg.GetRunCommandByTechstack(techstack.Name, mainFilePath, techstack.DockerBaseImage)
+		runCommand := getRunCommandByTechstack(techstack.Name, mainFilePath, techstack.DockerBaseImage)
 
 		// build and run new container
 		if err := d.buildAndRunContainer(ctx, schema.BuildAndRunContainerParams{
@@ -764,7 +685,7 @@ func (d *deploymentService) CreateNewDeployment(ctx context.Context, userID pgty
 			ProjectName:           params.ProjectName,
 			MainFileName:          params.MainFileName,
 			UserId:                userID,
-			RunCommandJSON:        pkg.ShellToExecForm(runCommand),
+			RunCommandJSON:        shellToExecForm(runCommand),
 			DockerBaseImage:       techstack.DockerBaseImage,
 			DockerRuntimeImage:    techstack.DockerRuntimeImage,
 			TechstackName:         techstack.Name,
@@ -878,101 +799,106 @@ func (d *deploymentService) CreateNewDeployment(ctx context.Context, userID pgty
 	return nil
 }
 
-// buildAndRunContainer implements [DeploymentService].`
-func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error {
-	tpt := schema.DockerFileTemplate{
-		DockerBaseImage:    p.DockerBaseImage,
-		DockerRuntimeImage: p.DockerRuntimeImage,
-		BuildFolder:        p.BuildFolder,
-		BuildCommand:       p.BuildCommand,
-		MainFileName:       p.MainFileName,
-		RunCommand:         p.RunCommandJSON,
-	}
-	template, err := pkg.ParseTemplateFromEmbed(pkg.GetFileNameByTechstack(p.TechstackName), tpt)
+// DeleteDeploymentByName implements [DeploymentService].
+func (d *deploymentService) DeleteDeploymentByDeploymentName(ctx context.Context, userId pgtype.UUID, projectName string, deploymentName string) error {
+	// get container and image
+	cnt, err := d.cr.GetActiveContainerByDelploymentName(ctx, container_repository.GetActiveContainerByDelploymentNameParams{
+		UserID: userId,
+		Name:   projectName,
+		Name_2: deploymentName,
+	})
 	if err != nil {
-		return err
-	}
-	dockerignoreTemplate, err := pkg.ParseTemplateFromEmbed("dockerignore", nil)
-	if err != nil {
-		return err
-	}
 
-	// dockerfilePath := filepath.Join(p.Path, "Dockerfile")
-	if err := pkg.WriteFileToBillyFs(p.FileSystem, "Dockerfile", []byte(template)); err != nil {
-		return err
-	}
-
-	// dockerignorePath := filepath.Join(p.Path, ".dockerignore")
-	if err := pkg.WriteFileToBillyFs(p.FileSystem, ".dockerignore", []byte(dockerignoreTemplate)); err != nil {
-		return err
-	}
-
-	// build docker image
-	if err = d.buildDockerImage(ctx, p.FileSystem, p.ImageName, map[string]string{}); err != nil {
-		return err
-	}
-	// network name
-	nn := fmt.Sprintf("%s-network", pkg.NormalizeDockerName(p.ProjectName))
-	if err := d.ensureDockerNetwork(ctx, nn); err != nil {
-		return err
-	}
-
-	exposedPorts := network.PortSet{}
-	portBindings := network.PortMap{}
-
-	for _, p := range p.Port {
-		port := network.Port(network.MustParsePort(fmt.Sprintf(
-			"%d/%s",
-			p.Internal,
-			strings.ToLower(p.Protocol),
-		)))
-
-		exposedPorts[port] = struct{}{}
-		portBindings[port] = []network.PortBinding{
-			{
-				HostIP:   constant.ALL_ADDR,
-				HostPort: strconv.Itoa(int(p.External)),
-			},
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
 		}
 	}
-
-	containerEnv := make([]string, 0, len(p.Env))
-
-	for _, env := range p.Env {
-		containerEnv = append(
-			containerEnv,
-			fmt.Sprintf("%s=%s", env.Key, env.Value),
-		)
+	// stop, container
+	if _, err := d.conRep.ContainerStop(ctx, cnt.Name, moby_client.ContainerStopOptions{}); err != nil {
+		if !errdefs.IsNotFound(err) {
+			return err
+		}
 	}
+	if err := d.dr.DeleteDeploymentByDeploymentName(ctx, deployment_repository.DeleteDeploymentByDeploymentNameParams{
+		UserID: userId,
+		Name:   projectName,
+		Name_2: deploymentName,
+	}); err != nil {
+		if _, cErr := d.conRep.ContainerStart(ctx, cnt.Name, moby_client.ContainerStartOptions{}); cErr != nil {
+			d.log.Err(cErr).Msg("error to start container")
+		}
+		return err
+	}
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		// remove container
+		if _, rmErr := d.conRep.ContainerRemove(ctx, cnt.Name, moby_client.ContainerRemoveOptions{}); rmErr != nil {
+			d.log.Err(rmErr).Msg("error to remove container")
+		}
+		// remove image
+		if _, rmiErr := d.conRep.ImageRemove(ctx, cnt.ImageName, moby_client.ImageRemoveOptions{}); rmiErr != nil {
+			d.log.Err(rmiErr).Msg("error to remove container")
+		}
+	})
+	wg.Wait()
+	return nil
+}
 
-	if _, err := d.conRep.ContainerCreate(ctx, moby_client.ContainerCreateOptions{
-		Name: p.ContainerName,
-		Config: &container.Config{
-			ExposedPorts: exposedPorts,
-			Env:          containerEnv,
-			Image:        p.ImageName,
-		},
-		HostConfig: &container.HostConfig{
-			PortBindings: portBindings,
-			RestartPolicy: container.RestartPolicy{
-				Name:              container.RestartPolicyOnFailure,
-				MaximumRetryCount: constant.MAXIMUM_RESTART,
-			},
-		},
-		NetworkingConfig: &network.NetworkingConfig{
-			EndpointsConfig: map[string]*network.EndpointSettings{
-				nn: {},
-			},
-		},
+// DeleteDeploymentByDeploymentId implements [DeploymentService].
+func (d *deploymentService) DeleteDeploymentByDeploymentId(ctx context.Context, userID, deploymentId pgtype.UUID) error {
+	if err := d.dr.DeleteDeploymentByDeploymentId(ctx, deployment_repository.DeleteDeploymentByDeploymentIdParams{
+		UserID: userID,
+		ID:     deploymentId,
 	}); err != nil {
 		return err
 	}
-
-	_, err = d.conRep.ContainerStart(ctx, p.ContainerName, moby_client.ContainerStartOptions{})
-	if err != nil {
-		return err
-	}
 	return nil
+}
+
+// GetDeploymentSetting implements [DeploymentService].
+func (d *deploymentService) GetDeploymentSettings(ctx context.Context, userId pgtype.UUID, projectName string, deploymentName string) (schema.GetDeploymentSettings, error) {
+	ad, err := d.dr.GetActiveDeploymentHistoryByDeploymentName(ctx, deployment_repository.GetActiveDeploymentHistoryByDeploymentNameParams{
+		UserID: userId,
+		Name:   projectName,
+		Name_2: deploymentName,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return schema.GetDeploymentSettings{}, defined_error.ErrActiveDeploymentNotFound
+		}
+		return schema.GetDeploymentSettings{}, err
+	}
+
+	var portList []schema.Port
+	if err := json.Unmarshal(ad.Port, &portList); err != nil {
+		return schema.GetDeploymentSettings{}, err
+	}
+	var envList []schema.ENV
+	if err := json.Unmarshal(ad.Env, &envList); err != nil {
+		return schema.GetDeploymentSettings{}, err
+	}
+	t1 := ad.UpdatedAt.Time
+	t2 := ad.DeploymentUpdatedAt.Time
+	latest := t1
+	if t2.After(t1) {
+		latest = t2
+	}
+	res := schema.GetDeploymentSettings{
+		DeploymentName:        ad.DeploymentName,
+		DeploymentDescription: ad.DeploymentDescription.String,
+		GithubAccount:         ad.GithubAccount.String,
+		RemoteUrl:             ad.RemoteUrl,
+		Branch:                ad.Branch,
+		Port:                  portList,
+		Env:                   envList,
+		BuildCommand:          ad.BuildCommand.String,
+		BuildFolder:           ad.BuildFolder.String,
+		MainFilePath:          ad.MainFilePath.String,
+		TechstackID:           ad.TechstackID,
+		TechstackName:         ad.TechstackName,
+		UpdatedAt:             latest.String(),
+	}
+	return res, nil
 }
 
 // GetTechstackName implements [DeploymentService].
@@ -1001,17 +927,6 @@ func (d *deploymentService) GetTechstackVersionByName(ctx context.Context, techs
 		})
 	}
 	return resp, nil
-}
-
-// DeleteDeploymentByDeploymentId implements [DeploymentService].
-func (d *deploymentService) DeleteDeploymentByDeploymentId(ctx context.Context, userID, deploymentId pgtype.UUID) error {
-	if err := d.dr.DeleteDeploymentByDeploymentId(ctx, deployment_repository.DeleteDeploymentByDeploymentIdParams{
-		UserID: userID,
-		ID:     deploymentId,
-	}); err != nil {
-		return err
-	}
-	return nil
 }
 
 // GetHistoryDeploymentByDeploymentId implements [DeploymentService].
@@ -1129,82 +1044,4 @@ func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, userI
 		})
 	}
 	return res, nil
-}
-
-// buildDockerImage implements [DeploymentService].
-func (d *deploymentService) buildDockerImage(ctx context.Context, fs billy.Filesystem, imageTag string, buildArgs map[string]string) error {
-	excludes, err := pkg.ReadDockerignore(fs)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	// excludes = append(excludes, "!"+filepath.ToSlash("Dockerfile"))
-	buildCtx, err := pkg.TarFilesystem(fs, excludes)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := buildCtx.Close(); err != nil {
-			log.Printf("failed to close build context: %v", err)
-		}
-	}()
-
-	apiBuildArgs := map[string]*string{}
-	for k, v := range buildArgs {
-		vv := v
-		apiBuildArgs[k] = &vv
-	}
-
-	resp, err := d.conRep.ImageBuild(ctx, buildCtx, moby_client.ImageBuildOptions{
-		Tags:        []string{imageTag},
-		Dockerfile:  "Dockerfile",
-		PullParent:  true,
-		Remove:      true,
-		BuildArgs:   apiBuildArgs,
-		ForceRemove: true,
-	})
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if _, err := d.conRep.ImagePrune(ctx, moby_client.ImagePruneOptions{
-			Filters: moby_client.Filters{},
-		}); err != nil {
-			log.Printf("failed remove dangling image: %v", err)
-		}
-		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
-		}
-	}()
-
-	err = jsonmessage.DisplayJSONMessagesStream(
-		resp.Body,
-		io.Discard,
-		0,
-		false,
-		nil,
-	)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// ensureDockerNetwork implements [DeploymentService].
-func (d *deploymentService) ensureDockerNetwork(ctx context.Context, networkName string) error {
-	networks, err := d.conRep.NetworkList(ctx, moby_client.NetworkListOptions{})
-	if err != nil {
-		return err
-	}
-	for _, net := range networks.Items {
-		if net.Name == networkName {
-			return nil
-		}
-	}
-	// Network does not exist, create it
-	if _, err := d.conRep.NetworkCreate(ctx, networkName, moby_client.NetworkCreateOptions{
-		Driver: "bridge",
-	}); err != nil {
-		return err
-	}
-	return nil
 }

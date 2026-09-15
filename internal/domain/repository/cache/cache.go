@@ -6,7 +6,7 @@ import (
 	"time"
 
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
-	"github.com/valkey-io/valkey-go"
+	valkey "github.com/valkey-io/valkey-go"
 )
 
 type (
