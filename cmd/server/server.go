@@ -78,6 +78,7 @@ func (s *Server) Run() {
 				e := os.Getenv("ENV")
 				switch e {
 				case "production":
+					close(httpServerReady)
 					if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 						logger.Fatal().Err(err).Msg("Failed to listen and serve http server")
 					}
