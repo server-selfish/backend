@@ -13,5 +13,4 @@ FROM gcr.io/distroless/static-debian13
 
 COPY --from=builder /app/bin/dist/backend /
 
-EXPOSE 8080
 ENTRYPOINT ["/backend"]
