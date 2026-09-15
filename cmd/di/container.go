@@ -2,13 +2,11 @@ package di
 
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/nats-io/nats.go/jetstream"
 	"github.com/server-selfish/backend/config/cache"
 	"github.com/server-selfish/backend/config/context"
 	docker_client "github.com/server-selfish/backend/config/docker"
 	"github.com/server-selfish/backend/config/logger"
 	"github.com/server-selfish/backend/config/monitoring"
-	"github.com/server-selfish/backend/config/mq"
 	"github.com/server-selfish/backend/config/router"
 	"github.com/server-selfish/backend/config/storage"
 	"github.com/server-selfish/backend/internal/domain/handler"
@@ -20,13 +18,12 @@ import (
 	project_repository "github.com/server-selfish/backend/internal/domain/repository/project"
 	user_repository "github.com/server-selfish/backend/internal/domain/repository/user"
 	"github.com/server-selfish/backend/internal/domain/service"
+	deployment_service "github.com/server-selfish/backend/internal/domain/service/deployment"
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
 	docker_infra "github.com/server-selfish/backend/internal/infra/docker"
 	git_infra "github.com/server-selfish/backend/internal/infra/git"
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
 	monitoring_infra "github.com/server-selfish/backend/internal/infra/monitoring"
-	mq_infra "github.com/server-selfish/backend/internal/infra/mq"
-	storage_infra "github.com/server-selfish/backend/internal/infra/storage"
 	"github.com/server-selfish/backend/internal/pkg"
 	"go.uber.org/dig"
 )
@@ -46,21 +43,6 @@ func BuildContainer() *dig.Container {
 	// token manager
 	if err := container.Provide(pkg.NewTokenManager); err != nil {
 		panic("Failed to provide token manager: " + err.Error())
-	}
-
-	// object storage connection
-	if err := container.Provide(storage.NewRustfsConnection); err != nil {
-		panic("Failed to provide object storage connection: " + err.Error())
-	}
-
-	// mq client connection
-	if err := container.Provide(mq.NewNatsConnection); err != nil {
-		panic("Failed to provide mq connection: " + err.Error())
-	}
-
-	// jetstream connection
-	if err := container.Provide(jetstream.New); err != nil {
-		panic("Failed to provide jetstream instance: " + err.Error())
 	}
 
 	// prometheus connection
@@ -100,12 +82,6 @@ func BuildContainer() *dig.Container {
 	// infra
 	if err := container.Provide(cache_infra.NewValkeyCache); err != nil {
 		panic("Failed to provide cache infra: " + err.Error())
-	}
-	if err := container.Provide(mq_infra.NewJetstreamInfra); err != nil {
-		panic("Failed to provide MQ infra: " + err.Error())
-	}
-	if err := container.Provide(storage_infra.NewRustfsInfra); err != nil {
-		panic("Failed to provide object storage infra: " + err.Error())
 	}
 	if err := container.Provide(github_infra.NewGithubInfra); err != nil {
 		panic("Failed to provide github infra: " + err.Error())
@@ -164,7 +140,7 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(service.NewGithubAppService); err != nil {
 		panic("Failed to provide Github App Service: " + err.Error())
 	}
-	if err := container.Provide(service.NewDeploymentService); err != nil {
+	if err := container.Provide(deployment_service.NewDeploymentService); err != nil {
 		panic("Failed to provide Deployment Service: " + err.Error())
 	}
 	if err := container.Provide(service.NewPrometheusService); err != nil {

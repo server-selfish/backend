@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/moby/moby/client"
-	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/handler"
 	"github.com/server-selfish/backend/internal/domain/service"
@@ -31,7 +30,6 @@ func (s *Server) Run() {
 			logger zerolog.Logger,
 			r chi.Router,
 			cache valkey.Client,
-			mq *nats.Conn,
 			db *pgxpool.Pool,
 			ph handler.ProjectHandler,
 			dh handler.DeploymentHandler,
@@ -47,14 +45,6 @@ func (s *Server) Run() {
 			defer func() {
 				if err := dc.Close(); err != nil {
 					logger.Error().Msgf("failed to close dc: %v", err)
-				}
-			}()
-
-			defer func() {
-				if mq.Status() == nats.CONNECTED {
-					_ = mq.Drain()
-				} else {
-					mq.Close()
 				}
 			}()
 			defer db.Close()
