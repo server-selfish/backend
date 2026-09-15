@@ -1,5 +1,5 @@
 
-FROM golang:1.24.6-alpine3.22 AS builder
+FROM golang:1.25.8-alpine3.22 AS builder
 WORKDIR /app
 COPY . .
 
@@ -9,9 +9,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o "./bin/di
 
 RUN upx --best --lzma ./bin/dist/backend
 
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13
 
 COPY --from=builder /app/bin/dist/backend /
 
-EXPOSE 443
+EXPOSE 8080
 ENTRYPOINT ["/backend"]

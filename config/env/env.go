@@ -33,6 +33,6 @@ func Load() {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(configpath)
 	if err := viper.ReadInConfig(); err != nil {
-		panic("failed to read config")
+		panic("failed to read config ")
 	}
 }

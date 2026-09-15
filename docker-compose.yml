@@ -37,22 +37,6 @@ services:
     volumes:
       - backend_db_data:/var/lib/postgresql
 
-  # nats
-  backend_mq:
-    image: nats:2.11.9
-    container_name: backend_mq
-    restart: unless-stopped
-    volumes:
-      - ./config/mq/nats-server.conf:/etc/nats/nats.conf
-      - backend_nats_data:/nats:rw
-      - backend_nats_jetstream-data:/jetstream/data:rw
-    environment:
-      - NATS_USER=${MQ_USER}
-      - NATS_PASSWORD=${MQ_PASSWORD}
-    ports:
-      - "8082:8081"
-    command: "-c /etc/nats/nats.conf --name nats -p 4221"
-
   # valkey
   backend_cache:
     image: valkey/valkey-bundle:9-alpine
@@ -64,38 +48,6 @@ services:
     ports:
       - "6379:6379"
     command: ["valkey-server", "--aclfile", "/etc/valkey/valkey.acl"]
-
-  # rustfs
-  backend_storage:
-    image: rustfs/rustfs:1.0.0-alpha.76
-    container_name: backend_storage
-    environment:
-      - RUSTFS_CONSOLE_ENABLE=true
-      - RUSTFS_ADDRESS=0.0.0.0:9000
-      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
-      - RUSTFS_EXTERNAL_ADDRESS=:9000 # Same as internal since no port mapping
-      - RUSTFS_CORS_ALLOWED_ORIGINS=*
-      - RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS=*
-      - RUSTFS_ACCESS_KEY=${OS_ROOT_USER}
-      - RUSTFS_SECRET_KEY=${OS_ROOT_PASSWORD}
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - backend_rustfs_data:/data
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "sh",
-          "-c",
-          "curl -f http://localhost:9000/health && curl -f http://localhost:9001/rustfs/console/health",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   backend_logs:
     container_name: monitoring-vlogs
@@ -112,10 +64,46 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+      
+  selfish-gateway:
+    image: nginx:1.28.0-alpine-slim
+    container_name: selfish-gateway
+    # ports:
+    #   - "8081:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./cert/server.crt:/etc/nginx/ssl/server.crt
+      - ./cert/server.key:/etc/nginx/ssl/server.key
+    restart: unless-stopped
+    network_mode: "host"
+
+  prometheus:
+    image: prom/prometheus:v3.12.0-distroless
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - cadvisor
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.54.1
+    container_name: cadvisor
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      
 volumes:
   backend_db_data: {}
-  backend_nats_data: {}
-  backend_nats_jetstream-data: {}
   backend_valkey_data: {}
-  backend_rustfs_data: {}
   backend_logs_data: {}
+  prometheus_data: {}
+  
