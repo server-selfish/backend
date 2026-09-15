@@ -14,7 +14,6 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/schema"
-	"github.com/server-selfish/backend/internal/pkg"
 	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 	"github.com/spf13/viper"
 )
@@ -59,7 +58,7 @@ func NewGithubInfra(logger zerolog.Logger) GithubInfra {
 }
 
 func (g *githubInfra) CreateInstallationToken(ctx context.Context, installationID int64) (schema.GithubAppInstallationToken, error) {
-	jwtToken, err := pkg.GenerateAppJWTFromPEM(g.privateKeyPEM, g.appID)
+	jwtToken, err := generateAppJWTFromPEM(g.privateKeyPEM, g.appID)
 	if err != nil {
 		g.logger.Error().Err(err).Msg("error generate app jwt")
 		return schema.GithubAppInstallationToken{}, err
@@ -117,7 +116,7 @@ func (g *githubInfra) CreateInstallationToken(ctx context.Context, installationI
 }
 
 func (g *githubInfra) FetchInstallation(ctx context.Context, installationID int64) (schema.GithubInstallationResponse, error) {
-	jwtToken, err := pkg.GenerateAppJWTFromPEM(g.privateKeyPEM, g.appID)
+	jwtToken, err := generateAppJWTFromPEM(g.privateKeyPEM, g.appID)
 	if err != nil {
 		g.logger.Error().Err(err).Msg("generate app jwt from pem error")
 		return schema.GithubInstallationResponse{}, err
