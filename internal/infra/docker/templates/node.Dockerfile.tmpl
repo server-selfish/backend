@@ -17,20 +17,22 @@ COPY . .
 
 RUN {{.BuildCommand}}
 
-# ---- Runtime stage ----
+# Strip devDependencies in builder (builder has shell).
+# Runtime stage stays RUN-free so distroless (no /bin/sh) works.
+RUN \
+  if [ -f package-lock.json ]; then npm prune --omit=dev; \
+  elif [ -f yarn.lock ]; then yarn install --production --frozen-lockfile --ignore-scripts; \
+  elif [ -f pnpm-lock.yaml ]; then pnpm prune --prod; \
+  else echo "No lockfile found." && exit 1; \
+  fi
+
+# ---- Runtime stage (distroless-safe: no RUN, flattened, no public) ----
 FROM {{.DockerRuntimeImage}}
 
 WORKDIR /app
 
 COPY --from=builder /app/package*.json ./
-RUN \
-  if [ -f package-lock.json ]; then npm ci --only=production; \
-  elif [ -f yarn.lock ]; then yarn install --production --frozen-lockfile; \
-  elif [ -f pnpm-lock.yaml ]; then npm install -g pnpm && pnpm install --prod --frozen-lockfile; \
-  else echo "No lockfile found." && exit 1; \
-  fi
-
-COPY --from=builder /app/dist ./
-COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/{{if .BuildFolder}}{{.BuildFolder}}{{else}}dist{{end}} ./
 
 CMD {{.RunCommand}}

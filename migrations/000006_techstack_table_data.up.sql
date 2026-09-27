@@ -14,7 +14,7 @@ INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runti
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Node.js','23.11.1','node:23.11.1-alpine3.22','node:23.11.1-alpine3.22');
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Node.js','24.15.0','node:24.15.0-alpine3.22','gcr.io/distroless/nodejs24-debian13');
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Node.js','25.9.0','node:25.9.0-trixie-slim','node:25.9.0-trixie-slim');
-INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Node.js','26.1.0','node:26.1.0-trixie-slim','node:26.1.0-trixie-slim');
+INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Node.js','26.1.0','node:26.1.0-trixie-slim','gcr.io/distroless/nodejs26-debian13');
 
 -- python
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.9.25','python:3.9.25-slim','gcr.io/distroless/python3-debian13');

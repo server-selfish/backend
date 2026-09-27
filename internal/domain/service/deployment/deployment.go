@@ -200,8 +200,7 @@ func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.
 			return err
 		}
 
-		mainFilePath := fmt.Sprintf("%s/%s", params.BuildFolder, params.MainFileName)
-		runCommand := getRunCommandByTechstack(techstack.Name, mainFilePath, techstack.DockerBaseImage)
+		runCommand := getRunCommandByTechstack(techstack.Name, params.BuildFolder, params.MainFileName, techstack.DockerRuntimeImage)
 
 		// build and run new container
 		if err := d.buildAndRunContainer(ctx, schema.BuildAndRunContainerParams{
@@ -431,9 +430,7 @@ func (d *deploymentService) UpdateDeploymentVersionToLatest(ctx context.Context,
 			return err
 		}
 
-		mainFilePath := fmt.Sprintf("%s/%s", prevActiveData.BuildFolder.String, prevActiveData.MainFilePath.String)
-		runCommand := getRunCommandByTechstack(prevActiveData.TechstackName, mainFilePath, prevActiveData.DockerBaseImage)
-
+		runCommand := getRunCommandByTechstack(prevActiveData.TechstackName, prevActiveData.BuildFolder.String, prevActiveData.MainFilePath.String, prevActiveData.DockerRuntimeImage)
 		// build and run new container
 		if err := d.buildAndRunContainer(ctx, schema.BuildAndRunContainerParams{
 			DepQuery:              depQuery,
@@ -667,8 +664,7 @@ func (d *deploymentService) CreateNewDeployment(ctx context.Context, userID pgty
 			return err
 		}
 
-		mainFilePath := fmt.Sprintf("%s/%s", params.BuildFolder, params.MainFileName)
-		runCommand := getRunCommandByTechstack(techstack.Name, mainFilePath, techstack.DockerBaseImage)
+		runCommand := getRunCommandByTechstack(techstack.Name, params.BuildFolder, params.MainFileName, techstack.DockerRuntimeImage)
 
 		// build and run new container
 		if err := d.buildAndRunContainer(ctx, schema.BuildAndRunContainerParams{

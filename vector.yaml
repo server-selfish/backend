@@ -1,0 +1,51 @@
+sources:
+  docker:
+    type: docker_logs
+
+
+transforms:
+  prepare:
+    type: remap
+    inputs:
+      - docker
+    source: |
+      .service = .container_name
+
+      if exists(.image) {
+        .container_image = .image
+      }
+
+      .host = get_hostname!()
+
+      # Deployed containers are named "<uuid>.<deployment_name>",
+      # so the segment after the dot is the deployment name.
+      # Infra containers (no dot) keep no deployment_name field.
+      if is_string(.container_name) {
+        parts = split!(.container_name, ".")
+        if length(parts) > 1 {
+          .deployment_name = parts[1]
+          .type = "selfish-deployment"
+        }
+      }
+
+
+sinks:
+  victorialogs:
+    type: http
+    inputs:
+      - prepare
+
+    uri: http://monitoring-vlogs:9428/insert/jsonline?_stream_fields=host,container_name,deployment_name,type&_msg_field=message&_time_field=timestamp
+    compression: gzip
+    method: post
+    healthcheck:
+      enabled: false
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+
+    buffer:
+      type: disk
+      max_size: 1073741824
+      when_full: block

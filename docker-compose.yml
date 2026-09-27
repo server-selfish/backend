@@ -49,7 +49,7 @@ services:
       - "6379:6379"
     command: ["valkey-server", "--aclfile", "/etc/valkey/valkey.acl"]
 
-  backend_logs:
+  monitoring-vlogs:
     container_name: monitoring-vlogs
     image: victoriametrics/victoria-logs:v1.50.0
     ports:
@@ -64,7 +64,20 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      
+
+  monitoring-vector:
+    image: timberio/vector:0.58.X-distroless-static
+    container_name: monitoring-vector
+    restart: unless-stopped
+    command:
+      - "--config"
+      - "/etc/vector/vector.yaml"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./vector.yaml:/etc/vector/vector.yaml:ro
+    depends_on:
+      - monitoring-vlogs
+
   selfish-gateway:
     image: nginx:1.28.0-alpine-slim
     container_name: selfish-gateway
@@ -100,10 +113,9 @@ services:
       - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
-      
+
 volumes:
   backend_db_data: {}
   backend_valkey_data: {}
   backend_logs_data: {}
   prometheus_data: {}
-  

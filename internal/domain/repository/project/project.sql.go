@@ -194,7 +194,7 @@ SELECT
   ,p.updated_at AS project_updated_at
   ,COALESCE(
     json_agg(
-      DISTINCT jsonb_build_object(
+      jsonb_build_object(
         'deployment_name', d.name,
         'deployment_url', d.git_remote_url,
         'deployment_created_at',d.created_at,
@@ -208,6 +208,7 @@ SELECT
         'techstack_version', dt.version,
         'container_name', c.name
       )
+      ORDER BY dh.created_at DESC
     ) FILTER (WHERE d.name IS NOT NULL),
     '[]'
   )::jsonb AS deployments
