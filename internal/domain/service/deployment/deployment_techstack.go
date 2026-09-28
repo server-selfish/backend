@@ -40,10 +40,18 @@ func getRunCommandByTechstack(name, buildFolder, mainFileName, runtimeImage stri
 		}
 		return "main"
 	case "python":
-		if strings.TrimSpace(mainFileName) != "" {
-			return strings.TrimSpace(mainFileName)
+		file := strings.TrimSpace(mainFileName)
+		if file == "" {
+			file = "main.py"
 		}
-		return "main.py"
+		// Distroless python images ship a python entrypoint, so CMD is just
+		// the file. Full images (e.g. python:*-slim used as runtime) have no
+		// entrypoint, so prefix the interpreter explicitly.
+		// NOTE: must check runtime image, base is always python:*.
+		if strings.HasPrefix(runtimeImage, "gcr.io/") {
+			return file
+		}
+		return fmt.Sprintf("python3 %s", file)
 	default:
 		return ""
 	}
