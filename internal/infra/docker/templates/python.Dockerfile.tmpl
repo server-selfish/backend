@@ -1,5 +1,5 @@
 # ---- Build Stage----
-FROM {{.DockerBaseImage}} as builder
+FROM {{.DockerBaseImage}} AS builder
 
 WORKDIR /app
 
@@ -7,17 +7,33 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
 COPY . .
+
+# Flexible dependency install: supports classic requirements.txt
+# and PEP 517 pyproject.toml (pip build backend).
+# NOTE: --target (not --prefix) is intentional. --prefix lays out deps under
+# a versioned lib/pythonX.Y/site-packages dir, which breaks when the builder
+# and runtime interpreters differ (we have 6 Python base images but a single
+# distroless runtime). --target keeps a flat, version-agnostic dir instead.
+# NOTE: --target only fixes pure-Python resolution. Compiled extensions
+# (pydantic-core, numpy, ...) are ABI-tagged (cpython-XY), so the builder
+# minor version MUST still match the runtime: python3-debian13 bundles
+# Python 3.13, therefore build with a python:3.13-*-slim base image.
+RUN set -e; \
+  if [ -f requirements.txt ]; then pip install --no-cache-dir --target=/install/deps -r requirements.txt; fi; \
+  if [ -f pyproject.toml ]; then pip install --no-cache-dir --upgrade pip setuptools wheel; pip install --no-cache-dir --target=/install/deps .; fi; \
+  if [ ! -f requirements.txt ] && [ ! -f pyproject.toml ]; then echo "No dependency file found (requirements.txt or pyproject.toml)." && exit 1; fi
 
 # ---- Runtime stage ----
 FROM {{.DockerRuntimeImage}}
 
 WORKDIR /app
 
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/usr/local/deps
+
 COPY --from=builder /app ./
-COPY --from=builder /install /usr/local
+COPY --from=builder /install/deps /usr/local/deps
 
 CMD {{.RunCommand}}
