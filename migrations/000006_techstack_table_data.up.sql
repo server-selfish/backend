@@ -17,9 +17,9 @@ INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runti
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Node.js','26.1.0','node:26.1.0-trixie-slim','gcr.io/distroless/nodejs26-debian13');
 
 -- python
-INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.9.25','python:3.9.25-slim','gcr.io/distroless/python3-debian13');
-INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.10.20','python:3.10.20-slim','gcr.io/distroless/python3-debian13');
-INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.11.15','python:3.11.15-slim','gcr.io/distroless/python3-debian13');
-INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.12.13','python:3.12.13-slim','gcr.io/distroless/python3-debian13');
+INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.9.25','python:3.9.25-slim','gcr.io/distroless/python3-debian11');
+INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.10.20','python:3.10.20-slim','python:3.10.20-slim');
+INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.11.15','python:3.11.15-slim','gcr.io/distroless/python3-debian12');
+INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.12.13','python:3.12.13-slim','python:3.12.13-slim');
 INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.13.13','python:3.13.13-slim','gcr.io/distroless/python3-debian13');
-INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.14.4','python:3.14.4-slim','gcr.io/distroless/python3-debian13');
+INSERT INTO deployment_techstack (name, version, docker_base_image, docker_runtime_image) VALUES ('Python','3.14.4','python:3.14.4-slim','python:3.14.4-slim');
