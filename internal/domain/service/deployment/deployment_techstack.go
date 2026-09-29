@@ -52,6 +52,21 @@ func getRunCommandByTechstack(name, buildFolder, mainFileName, runtimeImage stri
 			return file
 		}
 		return fmt.Sprintf("python3 %s", file)
+	case "rust":
+		// Single release binary at target/release/<name>, copied to /app/<name>.
+		// Runtimes (distroless cc) have no entrypoint, so CMD is always absolute.
+		file := strings.TrimSpace(mainFileName)
+		if file == "" {
+			file = "app"
+		}
+		// Tolerate "target/release/<bin>" input: flatten to base name.
+		if i := strings.LastIndex(file, "/"); i >= 0 {
+			file = file[i+1:]
+		}
+		if file == "" {
+			file = "app"
+		}
+		return fmt.Sprintf("/app/%s", file)
 	default:
 		return ""
 	}
@@ -65,6 +80,8 @@ func getFileNameByTechstack(name string) string {
 		return constant.GO_DOCKERFILE_TEMPLATE
 	case "python":
 		return constant.PYTHON_DOCKERFILE_TEMPLATE
+	case "rust":
+		return constant.RUST_DOCKERFILE_TEMPLATE
 	default:
 		return constant.NODE_DOCKERFILE_TEMPLATE
 	}

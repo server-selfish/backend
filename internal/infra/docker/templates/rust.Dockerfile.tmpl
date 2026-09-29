@@ -1,0 +1,22 @@
+# ---- Build stage ----
+FROM {{.DockerBaseImage}} AS builder
+
+WORKDIR /app
+
+# Warm the dependency cache before copying sources.
+# cargo fetch needs only the manifests, so this layer survives source edits.
+COPY Cargo.toml Cargo.lock ./
+RUN cargo fetch
+
+COPY . .
+
+RUN {{.BuildCommand}}
+
+# ---- Runtime stage (distroless cc: no shell, single binary only) ----
+FROM {{.DockerRuntimeImage}}
+
+WORKDIR /app
+
+COPY --from=builder /app/target/release/{{.MainFileName}} ./{{.MainFileName}}
+
+CMD {{.RunCommand}}
