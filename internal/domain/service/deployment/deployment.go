@@ -117,6 +117,12 @@ func NewDeploymentService(
 
 // UpdateDeployment implements [DeploymentService].
 func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.UUID, params schema.UpdateDeploymentParams) error {
+	if err := d.tryAcquireDeployLock(ctx, userID, params.ProjectName, params.DeploymentName); err != nil {
+		return err
+	}
+	detach := context.WithoutCancel(ctx)
+	defer d.releaseDeployLock(detach, userID, params.ProjectName, params.DeploymentName)
+
 	prevActiveData, err :=
 		d.dr.GetActiveDeploymentDetailByDeploymentName(ctx, deployment_repository.GetActiveDeploymentDetailByDeploymentNameParams{
 			UserID: userID,
@@ -139,6 +145,8 @@ func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.
 			Description: pgtype.Text{String: params.DeploymentDescription, Valid: true},
 		})
 	}
+	d.markBuildRunning(ctx, userID, params.ProjectName, params.DeploymentName)
+	defer d.clearBuildRunning(detach, userID, params.ProjectName, params.DeploymentName)
 
 	reps, err := d.gs.ListInstallationRepositories(ctx, userID, prevActiveData.InstallationID)
 	if err != nil {
@@ -358,6 +366,14 @@ func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.
 
 // UpdateDeploymentVersionToLatest implements [DeploymentService].
 func (d *deploymentService) UpdateDeploymentVersionToLatest(ctx context.Context, userID pgtype.UUID, projectName, deploymentName string) error {
+	if err := d.tryAcquireDeployLock(ctx, userID, projectName, deploymentName); err != nil {
+		return err
+	}
+	detach := context.WithoutCancel(ctx)
+	defer d.releaseDeployLock(detach, userID, projectName, deploymentName)
+	d.markBuildRunning(ctx, userID, projectName, deploymentName)
+	defer d.clearBuildRunning(detach, userID, projectName, deploymentName)
+
 	prevActiveData, err :=
 		d.dr.GetActiveDeploymentDetailByDeploymentName(ctx, deployment_repository.GetActiveDeploymentDetailByDeploymentNameParams{
 			UserID: userID,
@@ -588,6 +604,14 @@ func (d *deploymentService) UpdateDeploymentVersionToLatest(ctx context.Context,
 
 // CreateNewDeploymentVersion implements [DeploymentService].
 func (d *deploymentService) CreateNewDeployment(ctx context.Context, userID pgtype.UUID, installationID int64, params schema.CreateDeploymentHistoryParams) error {
+	if err := d.tryAcquireDeployLock(ctx, userID, params.ProjectName, params.DeploymentName); err != nil {
+		return err
+	}
+	detach := context.WithoutCancel(ctx)
+	defer d.releaseDeployLock(detach, userID, params.ProjectName, params.DeploymentName)
+	d.markBuildRunning(ctx, userID, params.ProjectName, params.DeploymentName)
+	defer d.clearBuildRunning(detach, userID, params.ProjectName, params.DeploymentName)
+
 	reps, err := d.gs.ListInstallationRepositories(ctx, userID, installationID)
 	if err != nil {
 		return err
@@ -1113,6 +1137,10 @@ func (d *deploymentService) TriggerWebhookRedeploy(ctx context.Context, reposito
 		result.Status = "started"
 		results = append(results, result)
 
+		// Flag synchronously so a client polling straight after 202 already
+		// sees running. Inner build re-marks with same key, overwrite safe.
+		d.markBuildRunning(ctx, t.UserID, t.ProjectName, t.DeploymentName)
+
 		go d.runWebhookRedeploy(ctx, t.ID, t.UserID, t.ProjectName, t.DeploymentName)
 	}
 
@@ -1137,17 +1165,11 @@ func (d *deploymentService) runWebhookRedeploy(
 		// without bound.
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), webhookBuildTimeout)
 
-		// Flagged before the build so a client polling straight after the 202
-		// already sees it as running.
-		d.markBuildRunning(ctx, userID, projectName, deploymentName)
-
+		// Progress flag + distributed lock live inside
+		// UpdateDeploymentVersionToLatest so webhook and manual paths share
+		// one key. No outer mark here, else outer flag outlives inner 409.
 		err := d.UpdateDeploymentVersionToLatest(ctx, userID, projectName, deploymentName)
 		cancel()
-
-		// The build context is cancelled by now, so clear the flag on a context
-		// detached from it or the delete is dropped and the flag lingers until
-		// its TTL.
-		d.clearBuildRunning(context.WithoutCancel(parent), userID, projectName, deploymentName)
 
 		if err != nil {
 			// Failures surface in the build log, which is queryable per

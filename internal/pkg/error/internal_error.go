@@ -72,6 +72,7 @@ var (
 	ErrMissinProjectId          = errors.New("missing project id")
 	ErrActiveDeploymentNotFound = errors.New("active deployment is not found")
 	ErrDeploymentNotFound       = errors.New("deployment is not found")
+	ErrBuildInProgress          = errors.New("deployment build already in progress")
 )
 
 // container

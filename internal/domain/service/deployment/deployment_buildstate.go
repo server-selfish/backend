@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 	valkey "github.com/valkey-io/valkey-go"
 )
 
@@ -27,6 +28,11 @@ const (
 	// the process dying mid-build, not the normal exit path, which deletes the
 	// key.
 	buildRunningTTL = webhookBuildTimeout + 5*time.Minute
+
+	// deployLockCachePrefix guards once-at-a-time builds per deployment.
+	// Separate from buildRunningCachePrefix: progress flag uses plain SET
+	// and allows overwrite, mutex uses SET NX and rejects second owner.
+	deployLockCachePrefix = "deploy_lock:"
 )
 
 // buildRunningCacheKey namespaces a build marker by owner and deployment name.
@@ -89,5 +95,54 @@ func (d *deploymentService) clearBuildRunning(
 	key := buildRunningCacheKey(userID, projectName, deploymentName)
 	if err := d.cache.Delete(ctx, key); err != nil {
 		d.log.Error().Err(err).Str("key", key).Msg("failed to clear build marker")
+	}
+}
+
+// deployLockCacheKey namespaces a mutex by owner and deployment name.
+// Same lowercasing as buildRunningCacheKey so manual and webhook paths
+// contend on one key regardless of casing.
+func deployLockCacheKey(userID pgtype.UUID, projectName, deploymentName string) string {
+	return fmt.Sprintf(
+		"%s%s:%s:%s",
+		deployLockCachePrefix,
+		userID.String(),
+		strings.ToLower(projectName),
+		strings.ToLower(deploymentName),
+	)
+}
+
+// tryAcquireDeployLock claims once-at-a-time ownership via SET NX.
+// Returns defined_error.ErrBuildInProgress when another build owns key.
+// Cache errors fail closed: duplicate container builds risk worse than
+// a rejected request during cache outage.
+// ponytail: simple Delete release, no owner token. Add token + Lua
+// compare-del when lock steal observed.
+func (d *deploymentService) tryAcquireDeployLock(
+	ctx context.Context,
+	userID pgtype.UUID,
+	projectName, deploymentName string,
+) error {
+	key := deployLockCacheKey(userID, projectName, deploymentName)
+	acquired, err := d.cache.TryAcquire(ctx, key, buildRunningMarker, buildRunningTTL)
+	if err != nil {
+		d.log.Error().Err(err).Str("key", key).Msg("failed to acquire deploy lock")
+		return err
+	}
+	if !acquired {
+		return defined_error.ErrBuildInProgress
+	}
+	return nil
+}
+
+// releaseDeployLock frees mutex. Caller passes detached context so
+// release survives HTTP or build timeout cancellation.
+func (d *deploymentService) releaseDeployLock(
+	ctx context.Context,
+	userID pgtype.UUID,
+	projectName, deploymentName string,
+) {
+	key := deployLockCacheKey(userID, projectName, deploymentName)
+	if err := d.cache.Delete(ctx, key); err != nil {
+		d.log.Error().Err(err).Str("key", key).Msg("failed to release deploy lock")
 	}
 }
