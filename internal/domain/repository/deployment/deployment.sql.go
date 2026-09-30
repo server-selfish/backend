@@ -342,6 +342,62 @@ func (q *Queries) GetActiveDeploymentHistoryByDeploymentName(ctx context.Context
 	return i, err
 }
 
+const getActiveDeploymentsByRepositoryId = `-- name: GetActiveDeploymentsByRepositoryId :many
+SELECT
+  p.user_id,
+  p.name as project_name,
+  d.id,
+  d.name as deployment_name,
+  d.installation_id,
+  dh.branch
+FROM deployment d
+JOIN project p ON d.project_id = p.id
+JOIN deployment_history dh ON dh.deployment_id = d.id AND dh.is_active = true
+WHERE d.repository_id = $1 AND d.installation_id = $2
+ORDER BY p.name, d.name
+`
+
+type GetActiveDeploymentsByRepositoryIdParams struct {
+	RepositoryID   int32
+	InstallationID int64
+}
+
+type GetActiveDeploymentsByRepositoryIdRow struct {
+	UserID         pgtype.UUID
+	ProjectName    string
+	ID             pgtype.UUID
+	DeploymentName string
+	InstallationID int64
+	Branch         string
+}
+
+func (q *Queries) GetActiveDeploymentsByRepositoryId(ctx context.Context, arg GetActiveDeploymentsByRepositoryIdParams) ([]GetActiveDeploymentsByRepositoryIdRow, error) {
+	rows, err := q.db.Query(ctx, getActiveDeploymentsByRepositoryId, arg.RepositoryID, arg.InstallationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetActiveDeploymentsByRepositoryIdRow
+	for rows.Next() {
+		var i GetActiveDeploymentsByRepositoryIdRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.ProjectName,
+			&i.ID,
+			&i.DeploymentName,
+			&i.InstallationID,
+			&i.Branch,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDeploymentByDeploymentId = `-- name: GetDeploymentByDeploymentId :one
 SELECT
   d.id, d.name, d.description, d.git_remote_url, d.project_id, d.installation_id, d.repository_id, d.created_at, d.updated_at

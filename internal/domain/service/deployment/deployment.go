@@ -23,14 +23,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	moby_client "github.com/moby/moby/client"
 	"github.com/rs/zerolog"
+	"github.com/server-selfish/backend/config/logger"
+	"github.com/server-selfish/backend/config/otel"
 	cache_repository "github.com/server-selfish/backend/internal/domain/repository/cache"
 	container_repository "github.com/server-selfish/backend/internal/domain/repository/container"
 	deployment_repository "github.com/server-selfish/backend/internal/domain/repository/deployment"
+	project_repository "github.com/server-selfish/backend/internal/domain/repository/project"
 	"github.com/server-selfish/backend/internal/domain/schema"
 	parentservice "github.com/server-selfish/backend/internal/domain/service"
 	docker_infra "github.com/server-selfish/backend/internal/infra/docker"
 	git_infra "github.com/server-selfish/backend/internal/infra/git"
 	github_infra "github.com/server-selfish/backend/internal/infra/github"
+	monitoring_infra "github.com/server-selfish/backend/internal/infra/monitoring"
 	"github.com/server-selfish/backend/internal/pkg"
 	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 )
@@ -49,25 +53,36 @@ type (
 		UpdateDeployment(ctx context.Context, userID pgtype.UUID, params schema.UpdateDeploymentParams) error
 		DeleteDeploymentByDeploymentName(ctx context.Context, userId pgtype.UUID, projectName, deploymentName string) error
 		DeleteDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) error
+		TriggerWebhookRedeploy(ctx context.Context, repositoryID int32, installationID int64) ([]schema.WebhookRedeployResult, error)
+		IsBuildRunning(ctx context.Context, userID pgtype.UUID, projectName, deploymentName string) (bool, error)
 		buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error
 		ensureDockerNetwork(ctx context.Context, networkName string) error
-		buildDockerImage(ctx context.Context, fs billy.Filesystem, imageTag string, buildArgs map[string]string) error
+		buildDockerImage(ctx context.Context, fs billy.Filesystem, imageTag string, buildArgs map[string]string, deploymentID pgtype.UUID, projectName, deploymentName string) error
+		GetBuildLog(ctx context.Context, userId pgtype.UUID, projectName, deploymentName, attemptID string, limit int) ([]schema.BuildLogLine, error)
 	}
 	deploymentService struct {
 		gs       parentservice.GithubAppService
 		dr       *deployment_repository.Queries
+		pr       *project_repository.Queries
 		cr       *container_repository.Queries
 		tm       pkg.TxManager
 		conRep   container_repository.ContainerRepository
 		gi       github_infra.GithubInfra
 		cache    cache_repository.CacheRepository
 		gitInfra git_infra.GitInfra
-		log      zerolog.Logger
+		vl       monitoring_infra.VictoriaLogsInfra
+		// locks serialises webhook-triggered redeploys per deployment id.
+		locks *deployLocks
+		// blog receives Docker build output only. Unlike log it bypasses
+		// stdout and feeds VictoriaLogs exclusively.
+		blog zerolog.Logger
+		log  zerolog.Logger
 	}
 )
 
 func NewDeploymentService(
 	dr *deployment_repository.Queries,
+	pr *project_repository.Queries,
 	gs parentservice.GithubAppService,
 	cache cache_repository.CacheRepository,
 	cr *container_repository.Queries,
@@ -75,17 +90,27 @@ func NewDeploymentService(
 	conRep container_repository.ContainerRepository,
 	gi github_infra.GithubInfra,
 	gitInfra git_infra.GitInfra,
+	vl monitoring_infra.VictoriaLogsInfra,
+	otelLogs *otel.Logs,
 	log zerolog.Logger,
 ) DeploymentService {
+	blog, ok := logger.NewOTLPLogger(otelLogs)
+	if !ok {
+		log.Warn().Msg("otlp export disabled, docker build logs will be discarded")
+	}
 	return &deploymentService{
 		gs:       gs,
 		dr:       dr,
+		pr:       pr,
 		cr:       cr,
 		tm:       tm,
 		cache:    cache,
 		conRep:   conRep,
 		gi:       gi,
 		gitInfra: gitInfra,
+		vl:       vl,
+		locks:    newDeployLocks(),
+		blog:     blog,
 		log:      log,
 	}
 }
@@ -215,6 +240,7 @@ func (d *deploymentService) UpdateDeployment(ctx context.Context, userID pgtype.
 			Port:                  params.Port,
 			DeploymentTechstackID: params.DeploymentTechstackID,
 			ProjectName:           params.ProjectName,
+			DeploymentName:        params.DeploymentName,
 			MainFileName:          params.MainFileName,
 			UserId:                userID,
 			RunCommandJSON:        shellToExecForm(runCommand),
@@ -444,6 +470,7 @@ func (d *deploymentService) UpdateDeploymentVersionToLatest(ctx context.Context,
 			Port:                  portList,
 			DeploymentTechstackID: prevActiveData.TechstackID,
 			ProjectName:           prevActiveData.ProjectName,
+			DeploymentName:        deploymentName,
 			MainFileName:          prevActiveData.MainFilePath.String,
 			UserId:                userID,
 			RunCommandJSON:        shellToExecForm(runCommand),
@@ -679,6 +706,7 @@ func (d *deploymentService) CreateNewDeployment(ctx context.Context, userID pgty
 			Port:                  params.Port,
 			DeploymentTechstackID: params.DeploymentTechstackID,
 			ProjectName:           params.ProjectName,
+			DeploymentName:        params.DeploymentName,
 			MainFileName:          params.MainFileName,
 			UserId:                userID,
 			RunCommandJSON:        shellToExecForm(runCommand),
@@ -1041,4 +1069,106 @@ func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, userI
 		})
 	}
 	return res, nil
+}
+
+// TriggerWebhookRedeploy implements [DeploymentService].
+//
+// The caller is a GitHub webhook, so it supplies no user identity: the owner is
+// resolved from the deployment row itself, and the repository/installation pair
+// is the authorization check. Every active deployment bound to that pair is
+// redeployed as its owner, reusing UpdateDeploymentVersionToLatest so build,
+// swap, and rollback stay identical to a manual deploy.
+//
+// Builds run in background goroutines; this returns as soon as each one is
+// started or folded into an in-flight build, because GitHub gives a delivery
+// only seconds before treating it as failed.
+func (d *deploymentService) TriggerWebhookRedeploy(ctx context.Context, repositoryID int32, installationID int64) ([]schema.WebhookRedeployResult, error) {
+	targets, err := d.dr.GetActiveDeploymentsByRepositoryId(ctx, deployment_repository.GetActiveDeploymentsByRepositoryIdParams{
+		RepositoryID:   repositoryID,
+		InstallationID: installationID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(targets) == 0 {
+		return nil, defined_error.ErrWebhookNotFound
+	}
+
+	results := make([]schema.WebhookRedeployResult, 0, len(targets))
+	for _, t := range targets {
+		result := schema.WebhookRedeployResult{
+			ProjectName:    t.ProjectName,
+			DeploymentName: t.DeploymentName,
+			Branch:         t.Branch,
+		}
+
+		if !d.locks.begin(t.ID) {
+			// A build owns this deployment. begin already recorded that one
+			// rerun is owed, which will pick up the newest branch HEAD.
+			result.Status = "queued"
+			results = append(results, result)
+			continue
+		}
+
+		result.Status = "started"
+		results = append(results, result)
+
+		go d.runWebhookRedeploy(ctx, t.ID, t.UserID, t.ProjectName, t.DeploymentName)
+	}
+
+	return results, nil
+}
+
+// runWebhookRedeploy builds now, then repeats at most once more if pushes
+// arrived while this build was running.
+//
+// The build context is detached from the request on purpose: the handler has
+// already returned 202, and a Docker build routinely outlives the router's
+// 5 minute middleware timeout. It is equally deliberately not derived from the
+// process signal context, so a restart lets an in-flight deploy finish instead
+// of leaving a half-created container behind.
+func (d *deploymentService) runWebhookRedeploy(
+	parent context.Context,
+	id, userID pgtype.UUID,
+	projectName, deploymentName string,
+) {
+	for {
+		// Each attempt gets its own budget; a burst of pushes cannot extend it
+		// without bound.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), webhookBuildTimeout)
+
+		// Flagged before the build so a client polling straight after the 202
+		// already sees it as running.
+		d.markBuildRunning(ctx, userID, projectName, deploymentName)
+
+		err := d.UpdateDeploymentVersionToLatest(ctx, userID, projectName, deploymentName)
+		cancel()
+
+		// The build context is cancelled by now, so clear the flag on a context
+		// detached from it or the delete is dropped and the flag lingers until
+		// its TTL.
+		d.clearBuildRunning(context.WithoutCancel(parent), userID, projectName, deploymentName)
+
+		if err != nil {
+			// Failures surface in the build log, which is queryable per
+			// deployment; the webhook response was already sent as 202.
+			d.log.Error().Err(err).
+				Str("project_name", projectName).
+				Str("deployment_name", deploymentName).
+				Msg("webhook redeploy failed")
+		} else {
+			d.log.Info().
+				Str("project_name", projectName).
+				Str("deployment_name", deploymentName).
+				Msg("webhook redeploy succeeded")
+		}
+
+		if !d.locks.done(id) {
+			return
+		}
+		d.log.Info().
+			Str("project_name", projectName).
+			Str("deployment_name", deploymentName).
+			Msg("webhook redeploy requeued by a newer push")
+	}
 }

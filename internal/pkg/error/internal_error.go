@@ -79,6 +79,14 @@ var (
 	ErrContainerNotFound = errors.New("container is not found")
 )
 
+// webhook
+var (
+	ErrInvalidWebhookSignature = errors.New("invalid or missing webhook signature")
+	ErrWebhookDisabled         = errors.New("webhook is not configured")
+	ErrInvalidWebhookPayload   = errors.New("invalid webhook payload")
+	ErrWebhookNotFound         = errors.New("no active deployment for this repository")
+)
+
 // parser internal error
 var (
 	ErrInvalidPrivateKey        = errors.New("invalid private key")

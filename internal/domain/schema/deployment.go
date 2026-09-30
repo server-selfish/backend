@@ -45,6 +45,7 @@ type (
 	BuildAndRunContainerParams struct {
 		DepQuery              *deployment_repository.Queries
 		ProjectName           string
+		DeploymentName        string
 		FileSystem            billy.Filesystem
 		BuildCommand          string
 		BuildFolder           string
@@ -148,6 +149,24 @@ type (
 		TechstackID           int32  `json:"techstack_id"`
 		TechstackName         string `json:"techstack_name"`
 		UpdatedAt             string `json:"updated_at"`
+	}
+	BuildLogLine struct {
+		Time    string `json:"time"`
+		Seq     int    `json:"seq"`
+		Message string `json:"message"`
+	}
+	// WebhookRedeployResult reports what a webhook push triggered, per deployment.
+	WebhookRedeployResult struct {
+		ProjectName    string `json:"project_name"`
+		DeploymentName string `json:"deployment_name"`
+		Branch         string `json:"branch"`
+		// started: building now. queued: a build owns this deployment, and one
+		// rerun has been folded in to pick up the newest commit.
+		Status string `json:"status"`
+	}
+	// IsBuildRunningData is the progress flag for a single deployment.
+	IsBuildRunningData struct {
+		IsBuilding bool `json:"is_building"`
 	}
 )
 

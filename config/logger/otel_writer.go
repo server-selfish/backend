@@ -3,14 +3,27 @@ package logger
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"math"
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/config/otel"
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
 )
+
+// NewOTLPLogger returns a logger that writes only to the OTLP pipeline
+// (VictoriaLogs), bypassing stdout. Events emitted here never appear on the
+// console. When OTLP export is disabled it returns a discard logger and
+// false so callers can warn once instead of losing logs silently.
+func NewOTLPLogger(logs *otel.Logs) (zerolog.Logger, bool) {
+	if !logs.Enabled() {
+		return zerolog.New(io.Discard), false
+	}
+	return zerolog.New(newOTELWriter(logs)).With().Timestamp().Logger(), true
+}
 
 // otelWriter converts zerolog JSON events into OTel log records.
 // Write never fails: unparsable input is dropped so a broken event can

@@ -39,6 +39,7 @@ func (s *Server) Run() {
 			ghah handler.GithubAppHandler,
 			ch handler.ContainerHandler,
 			mh handler.MonitoringHandler,
+			wh handler.WebhookHandler,
 			as service.AuthService,
 			dc *client.Client,
 			appCtx context.Context,
@@ -57,6 +58,9 @@ func (s *Server) Run() {
 			// Public auth routes
 			handler.RegisterPublicAuthRoutes(r, ah)
 			handler.RegisterPublicGithubAppRoutes(r, ghah)
+			// Public webhook route, authenticated by HMAC signature rather than
+			// a JWT since GitHub cannot present one.
+			handler.RegisterWebhookRoutes(r, wh)
 
 			// Protected business routes
 			r.Group(func(pr chi.Router) {

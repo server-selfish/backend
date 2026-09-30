@@ -95,6 +95,9 @@ func BuildContainer() *dig.Container {
 	if err := container.Provide(monitoring_infra.NewPrometheusInfra); err != nil {
 		panic("Failed to provide prometheus infra: " + err.Error())
 	}
+	if err := container.Provide(monitoring_infra.NewVictoriaLogsInfra); err != nil {
+		panic("Failed to provide victoria logs infra: " + err.Error())
+	}
 	if err := container.Provide(docker_infra.NewDockerInfra); err != nil {
 		panic("Failed to provide prometheus infra: " + err.Error())
 	}
@@ -171,6 +174,9 @@ func BuildContainer() *dig.Container {
 	}
 	if err := container.Provide(handler.NewMonitoringHandler); err != nil {
 		panic("Failed to provide monitoring Handler: " + err.Error())
+	}
+	if err := container.Provide(handler.NewWebhookHandler); err != nil {
+		panic("Failed to provide webhook Handler: " + err.Error())
 	}
 
 	// http server

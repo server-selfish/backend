@@ -3,13 +3,14 @@ package service
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-billy/v6"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	moby_client "github.com/moby/moby/client"
@@ -49,7 +50,7 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 	}
 
 	// build docker image
-	if err = d.buildDockerImage(ctx, p.FileSystem, p.ImageName, map[string]string{}); err != nil {
+	if err = d.buildDockerImage(ctx, p.FileSystem, p.ImageName, map[string]string{}, p.DeploymentId, p.ProjectName, p.DeploymentName); err != nil {
 		return err
 	}
 	// network name
@@ -117,7 +118,7 @@ func (d *deploymentService) buildAndRunContainer(ctx context.Context, p schema.B
 }
 
 // buildDockerImage implements [DeploymentService].
-func (d *deploymentService) buildDockerImage(ctx context.Context, fs billy.Filesystem, imageTag string, buildArgs map[string]string) error {
+func (d *deploymentService) buildDockerImage(ctx context.Context, fs billy.Filesystem, imageTag string, buildArgs map[string]string, deploymentID pgtype.UUID, projectName, deploymentName string) error {
 	excludes, err := docker_infra.ReadDockerignore(fs)
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -161,13 +162,19 @@ func (d *deploymentService) buildDockerImage(ctx context.Context, fs billy.Files
 		}
 	}()
 
+	// Preserve the full build log in VictoriaLogs instead of discarding it.
+	// Logging never fails the build: the writer absorbs write errors and the
+	// OTLP pipeline degrades to stdout-only when VictoriaLogs is unreachable.
+	lw := newBuildLogWriter(d.blog, deploymentID, projectName, deploymentName, imageTag)
+	start := time.Now()
 	err = jsonmessage.DisplayJSONMessagesStream(
 		resp.Body,
-		io.Discard,
+		lw,
 		0,
 		false,
 		nil,
 	)
+	lw.finish(err == nil, time.Since(start))
 	if err != nil {
 		return err
 	}

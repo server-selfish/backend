@@ -19,6 +19,12 @@ func RegisterPublicGithubAppRoutes(r chi.Router, gah GithubAppHandler) {
 	r.Get("/github-app/callback", gah.Callback)
 }
 
+// RegisterWebhookRoutes is mounted outside the auth group on purpose: a GitHub
+// delivery carries no JWT and is authenticated by its HMAC signature instead.
+func RegisterWebhookRoutes(r chi.Router, wh WebhookHandler) {
+	r.Post("/webhook/deploy", wh.RedeployOnPush)
+}
+
 func RegisterProtectedGithubAppRoutes(r chi.Router, gah GithubAppHandler) {
 	r.Get("/github-app/install", gah.Install)
 	r.Get("/github-app/installations", gah.ListInstallations)
@@ -43,6 +49,8 @@ func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 	r.Get("/deployment/techstack", dh.GetTechstackName)
 	r.Get("/deployment/techstack/{techstack_name}/version", dh.GetTechstackVersionByName)
 	r.Get("/deployment/settings", dh.GetDeploymentSettings)
+	r.Get("/deployment/build-log", dh.GetBuildLog)
+	r.Get("/deployment/build-state", dh.IsBuildRunning)
 	r.Post("/deployment", dh.CreateNewDeployment)
 	r.Post("/deployment/deploy", dh.UpdateDeploymentVersionToLatest)
 	// r.Post("/deployment/version", dh.CreateNewDeploymentVersionByDeploymentId)

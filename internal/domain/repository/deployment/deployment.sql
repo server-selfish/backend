@@ -342,3 +342,17 @@ WHERE
   p.id = d.project_id
   AND p.user_id = $1
   AND d.id = $2;
+
+-- name: GetActiveDeploymentsByRepositoryId :many
+SELECT
+  p.user_id,
+  p.name as project_name,
+  d.id,
+  d.name as deployment_name,
+  d.installation_id,
+  dh.branch
+FROM deployment d
+JOIN project p ON d.project_id = p.id
+JOIN deployment_history dh ON dh.deployment_id = d.id AND dh.is_active = true
+WHERE d.repository_id = $1 AND d.installation_id = $2
+ORDER BY p.name, d.name;
