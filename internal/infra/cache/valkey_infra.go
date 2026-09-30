@@ -1772,7 +1772,7 @@ func (v *valkeyInfra) Set(ctx context.Context, key string, value any, expiration
 
 // SetArgs implements [ValkeyInfra].
 func (v *valkeyInfra) SetArgs(ctx context.Context, key string, value any, a valkeycompat.SetArgs) *valkeycompat.StatusCmd {
-	panic("unimplemented")
+	return v.valkeyClient.SetArgs(ctx, key, value, a)
 }
 
 // SetBit implements [ValkeyInfra].

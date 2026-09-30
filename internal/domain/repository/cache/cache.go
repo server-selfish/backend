@@ -3,16 +3,21 @@ package cache_repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	cache_infra "github.com/server-selfish/backend/internal/infra/cache"
 	valkey "github.com/valkey-io/valkey-go"
+	"github.com/valkey-io/valkey-go/valkeycompat"
 )
 
 type (
 	CacheRepository interface {
 		Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error
 		SetJSON(ctx context.Context, key string, value interface{}, expiration time.Duration) error
+		// TryAcquire sets key only when absent via SET NX.
+		// Reports true when lock acquired, false when key exists.
+		TryAcquire(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error)
 		Get(ctx context.Context, key string) (string, error)
 		GetJSON(ctx context.Context, key string, dest interface{}) error
 		Delete(ctx context.Context, key string) error
@@ -83,6 +88,18 @@ func (c cacheRepository) Set(ctx context.Context, key string, value interface{},
 		return err
 	}
 	return nil
+}
+
+// TryAcquire implements [CacheRepository].
+func (c cacheRepository) TryAcquire(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
+	val, err := c.ci.SetArgs(ctx, key, value, valkeycompat.SetArgs{Mode: "NX", TTL: expiration}).Result()
+	if err != nil {
+		if errors.Is(err, valkey.Nil) {
+			return false, nil
+		}
+		return false, err
+	}
+	return val == "OK", nil
 }
 
 // SetJSON implements [CacheRepository].
