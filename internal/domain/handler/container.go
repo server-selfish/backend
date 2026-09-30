@@ -13,6 +13,7 @@ import (
 	"github.com/server-selfish/backend/internal/domain/service"
 	"github.com/server-selfish/backend/internal/pkg"
 	defined_error "github.com/server-selfish/backend/internal/pkg/error"
+	"github.com/spf13/viper"
 )
 
 type (
@@ -71,7 +72,13 @@ func (c *containerHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	events, errs, qErr := c.cs.StreamLogs(c.appCtx, ui, name)
+	// Bound the stream lifetime and propagate client disconnects to the
+	// service so its goroutines and the docker log reader are released.
+	// (Previously the app-wide context was passed, which outlives requests.)
+	streamCtx, cancel := context.WithTimeout(r.Context(), resolveContainerLogSSETimeout())
+	defer cancel()
+
+	events, errs, qErr := c.cs.StreamLogs(streamCtx, ui, name)
 	if qErr != nil {
 		c.logger.Error().Msg(qErr.Error())
 		switch {
@@ -84,9 +91,12 @@ func (c *containerHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	// Prevent the nginx gateway from buffering the stream.
+	w.Header().Set("X-Accel-Buffering", "no")
 	for {
 		select {
-		case <-c.appCtx.Done():
+		case <-streamCtx.Done():
 			return
 
 		case err := <-errs:
@@ -323,4 +333,15 @@ func (c *containerHandler) GetContainerStatus(w http.ResponseWriter, r *http.Req
 		return
 	}
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch status success", status)
+}
+
+// resolveContainerLogSSETimeout reads sse.containerlog.timeout_seconds with
+// a 1800s fallback for missing or non-positive values. Live tails run far
+// longer than build-log replays, hence the larger default.
+func resolveContainerLogSSETimeout() time.Duration {
+	viper.SetDefault("sse.containerlog.timeout_seconds", 1800)
+	if n := viper.GetInt("sse.containerlog.timeout_seconds"); n > 0 {
+		return time.Duration(n) * time.Second
+	}
+	return 1800 * time.Second
 }
