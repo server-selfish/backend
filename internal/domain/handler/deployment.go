@@ -108,6 +108,10 @@ func (d *deploymentHandler) UpdateDeployment(w http.ResponseWriter, r *http.Requ
 	}
 	if err := d.ds.UpdateDeployment(ctx, ui, req); err != nil {
 		d.logger.Error().Msg(err.Error())
+		if errors.Is(err, defined_error.ErrBuildInProgress) {
+			pkg.ReturnError(w, http.StatusConflict, err)
+			return
+		}
 		pkg.ReturnError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -180,6 +184,10 @@ func (d *deploymentHandler) UpdateDeploymentVersionToLatest(w http.ResponseWrite
 	}
 	if err := d.ds.UpdateDeploymentVersionToLatest(ctx, ui, req.ProjectName, req.DeploymentName); err != nil {
 		d.logger.Error().Msg(err.Error())
+		if errors.Is(err, defined_error.ErrBuildInProgress) {
+			pkg.ReturnError(w, http.StatusConflict, err)
+			return
+		}
 		pkg.ReturnError(w, http.StatusInternalServerError, defined_error.ErrInternalServerError)
 		return
 	}
@@ -246,6 +254,10 @@ func (d *deploymentHandler) CreateNewDeployment(w http.ResponseWriter, r *http.R
 
 	if err := d.ds.CreateNewDeployment(ctx, ui, ii, req); err != nil {
 		d.logger.Error().Msg(err.Error())
+		if errors.Is(err, defined_error.ErrBuildInProgress) {
+			pkg.ReturnError(w, http.StatusConflict, err)
+			return
+		}
 		pkg.ReturnError(w, http.StatusInternalServerError, err)
 		return
 	}
