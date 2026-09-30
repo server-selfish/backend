@@ -3,12 +3,14 @@ FROM {{.DockerBaseImage}} AS builder
 
 WORKDIR /app
 
-# Warm the dependency cache before copying sources.
-# cargo fetch needs only the manifests, so this layer survives source edits.
-COPY Cargo.toml Cargo.lock ./
-RUN cargo fetch
-
+# Warm the registry cache as a distinct step so fetch errors surface
+# separately from compile errors. NOTE: sources must be copied first —
+# cargo resolves build targets from the filesystem (src/main.rs,
+# src/lib.rs, ...), so fetching with only the manifests present fails
+# with "no targets specified in the manifest".
 COPY . .
+
+RUN cargo fetch
 
 RUN {{.BuildCommand}}
 
