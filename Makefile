@@ -1,5 +1,5 @@
 
-.PHONY: run docker-build
+.PHONY: codegraph docs run docker-build
 
 # run app with go run command
 run:
@@ -12,8 +12,13 @@ docker-build:
 dev-start:
 	@docker compose up -d
 
-# migrations
+codegraph:
+	@codegraph sync
 
+docs:
+	swag init -g cmd/server/main.go --parseInternal
+
+# migrations
 migrate-up:
 	@migrate -path migrations/ -database "postgresql://myusername:password@localhost:5432/selfish?sslmode=disable" -verbose up
 
