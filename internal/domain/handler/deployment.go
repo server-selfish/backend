@@ -13,7 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/schema"
-	"github.com/server-selfish/backend/internal/domain/service/deployment"
+	service "github.com/server-selfish/backend/internal/domain/service/deployment"
 	"github.com/server-selfish/backend/internal/pkg"
 	defined_error "github.com/server-selfish/backend/internal/pkg/error"
 	"github.com/spf13/viper"
@@ -50,6 +50,18 @@ func NewDeploymentHandler(ds service.DeploymentService, logger zerolog.Logger) D
 }
 
 // DeleteDeploymentByDeploymentName implements [DeploymentHandler].
+// DeleteDeploymentByDeploymentName godoc
+// @Summary     Delete deployment by its name
+// @Tags        deployments
+// @Produce     json
+// @Param       project_name query string true "Project name"
+// @Param       deployment_name query string true "deployment name"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{message="deployment deleted"}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment [delete]
 func (d *deploymentHandler) DeleteDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -86,7 +98,20 @@ func (d *deploymentHandler) DeleteDeploymentByDeploymentName(w http.ResponseWrit
 	pkg.ReturnSuccess(w, http.StatusOK, "deployment deleted", nil)
 }
 
-// UpdateDeploymentData implements [DeploymentHandler].
+// UpdateDeployment implements [DeploymentHandler].
+// UpdateDeployment godoc
+// @Summary     update deployment by its name
+// @Tags        deployments
+// @Accept      json
+// @Produce     json
+// @Param       request body schema.UpdateDeploymentParams true "update deployment request"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{message="settings updated"}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     409 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment [patch]
 func (d *deploymentHandler) UpdateDeployment(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -118,7 +143,20 @@ func (d *deploymentHandler) UpdateDeployment(w http.ResponseWriter, r *http.Requ
 	pkg.ReturnSuccess(w, http.StatusOK, "settings updated", nil)
 }
 
-// GetDeploymentSetting implements [DeploymentHandler].
+// GetDeploymentSettings implements [DeploymentHandler].
+// GetDeploymentSettings godoc
+// @Summary     get deployment setting by its name
+// @Tags        deployments
+// @Produce     json
+// @Param       project_name query string true "Project name"
+// @Param       deployment_name query string true "deployment name"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=schema.GetDeploymentSettings}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     404 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/settings [get]
 func (d *deploymentHandler) GetDeploymentSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -162,6 +200,19 @@ func (d *deploymentHandler) GetDeploymentSettings(w http.ResponseWriter, r *http
 }
 
 // UpdateDeploymentVersionToLatest implements [DeploymentHandler].
+// UpdateDeploymentVersionToLatest godoc
+// @Summary     Re deploy the latest version of configured branch.
+// @Tags        deployments
+// @Accept	json
+// @Produce     json
+// @Param       request body schema.UpdateDeploymentHistoryToLatestParams true "update deployment request"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{message="new version deployed"}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     409 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/deploy [post]
 func (d *deploymentHandler) UpdateDeploymentVersionToLatest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -195,8 +246,23 @@ func (d *deploymentHandler) UpdateDeploymentVersionToLatest(w http.ResponseWrite
 }
 
 // GetTechstackName implements [DeploymentHandler].
+// GetTechstackName godoc
+// @Summary     get techstack name list available
+// @Tags        deployments
+// @Produce     json
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=schema.GetTechstackList}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/techstack [get]
 func (d *deploymentHandler) GetTechstackName(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	_, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
+		return
+	}
 	tl, err := d.ds.GetTechstackName(ctx)
 	if err != nil {
 		d.logger.Error().Msg(err.Error())
@@ -207,8 +273,25 @@ func (d *deploymentHandler) GetTechstackName(w http.ResponseWriter, r *http.Requ
 }
 
 // GetTechstackVersionByName implements [DeploymentHandler].
+// GetTechstackVersionByName godoc
+// @Summary     get list of techstack version by name.
+// @Tags        deployments
+// @Produce     json
+// @Param	techstack_name path string true "Techstack name"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=[]schema.GetTechstackVersion}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/techstack/{techstack_name}/version [get]
 func (d *deploymentHandler) GetTechstackVersionByName(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	_, ok := pkg.AuthUserIDFromContext(ctx)
+	if !ok {
+		d.logger.Error().Msg(defined_error.ErrMissingUserIdInContext.Error())
+		pkg.ReturnError(w, http.StatusUnauthorized, defined_error.ErrUnauthorized)
+		return
+	}
 	tn := chi.URLParam(r, "techstack_name")
 	if tn == "" {
 		d.logger.Error().Msg(defined_error.ErrMissingTechstackNameInParams.Error())
@@ -224,7 +307,21 @@ func (d *deploymentHandler) GetTechstackVersionByName(w http.ResponseWriter, r *
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch version success", vl)
 }
 
-// CreateNewDeploymentVersion implements [DeploymentHandler].
+// CreateNewDeployment implements [DeploymentHandler].
+// CreateNewDeployment godoc
+// @Summary     create new deployment.
+// @Tags        deployments
+// @Accept	json
+// @Produce     json
+// @Param	request body schema.CreateDeploymentHistoryParams true "Create deployment history request"
+// @Security    BearerAuth
+// @Success     201 {object} pkg.Response{message="deployment deployed"}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     404 {object} pkg.Response{error=string}
+// @Failure     409 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment [post]
 func (d *deploymentHandler) CreateNewDeployment(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -261,10 +358,21 @@ func (d *deploymentHandler) CreateNewDeployment(w http.ResponseWriter, r *http.R
 		pkg.ReturnError(w, http.StatusInternalServerError, err)
 		return
 	}
-	pkg.ReturnSuccess(w, http.StatusOK, "deployment deployed", nil)
+	pkg.ReturnSuccess(w, http.StatusCreated, "deployment deployed", nil)
 }
 
 // DeleteDeploymentByDeploymentId implements [DeploymentHandler].
+// DeleteDeploymentByDeploymentId godoc
+// @Summary     Delete deployment by deployment id.
+// @Tags        deployments
+// @Produce     json
+// @Param	id path string true "deployment id"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{message="deployment deleted"}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/{id} [delete]
 func (d *deploymentHandler) DeleteDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -303,7 +411,19 @@ func (d *deploymentHandler) DeleteDeploymentByDeploymentId(w http.ResponseWriter
 	pkg.ReturnSuccess(w, http.StatusOK, "deployment deleted", nil)
 }
 
-// GetHistoryDeploymentByDeploymentId implements [DeploymentHandler].
+// GetHistoryDeploymentByDeploymentName implements [DeploymentHandler].
+// GetHistoryDeploymentByDeploymentName godoc
+// @Summary     get deployment history by deployment name.
+// @Tags        deployments
+// @Produce     json
+// @Param				project_name query string true "project name"
+// @Param				deployment_name query string true "deployment name"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=[]schema.GetHistoryDeploymentHistory}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/history [get]
 func (d *deploymentHandler) GetHistoryDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -343,6 +463,19 @@ func (d *deploymentHandler) GetHistoryDeploymentByDeploymentName(w http.Response
 }
 
 // GetActiveDeploymenByDeploymentName implements [DeploymentHandler].
+// GetActiveDeploymenByDeploymentName godoc
+// @Summary     get active deployment by deployment name.
+// @Tags        deployments
+// @Produce     json
+// @Param				project_name query string true "project name"
+// @Param				deployment_name query string true "deployment name"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=[]schema.GetHistoryDeploymentHistory}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     404 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/active [get]
 func (d *deploymentHandler) GetActiveDeploymentByDeploymentName(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -387,6 +520,18 @@ func (d *deploymentHandler) GetActiveDeploymentByDeploymentName(w http.ResponseW
 }
 
 // GetDeploymentByDeploymentId implements [DeploymentHandler].
+// GetDeploymentByDeploymentId godoc
+// @Summary     get deployment by deploymet id.
+// @Tags        deployments
+// @Produce     json
+// @Param				id path string true "deployment id"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=schema.GetSingleDeploymentData}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     404 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/{id} [get]
 func (d *deploymentHandler) GetDeploymentByDeploymentId(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -431,6 +576,17 @@ func (d *deploymentHandler) GetDeploymentByDeploymentId(w http.ResponseWriter, r
 }
 
 // GetDeploymentsByProjectId implements [DeploymentHandler].
+// GetDeploymentsByProjectId godoc
+// @Summary     get all deployment by project id.
+// @Tags        deployments
+// @Produce     json
+// @Param				project_id query string true "project id"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=[]schema.GetDeploymentData}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment [get]
 func (d *deploymentHandler) GetDeploymentsByProjectId(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -471,6 +627,22 @@ func (d *deploymentHandler) GetDeploymentsByProjectId(w http.ResponseWriter, r *
 }
 
 // GetBuildLog implements [DeploymentHandler].
+// GetBuildLog godoc
+// @Summary     get build log [for debug only].
+// @Description Returns build log lines as JSON, or as a Server-Sent Events stream when the client sends Accept: text/event-stream.
+// @Tags        deployments
+// @Produce     json
+// @Param       project_name query string true "project name"
+// @Param       deployment_name query string true "deployment name"
+// @Param       attempt_id query string false "deployment attempt id"
+// @Param       limit query int false "maximum number of log lines" default(1000)
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=[]schema.BuildLogLine} "JSON response, or SSE event stream when Accept is text/event-stream"
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     404 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/build-log [get]
 func (d *deploymentHandler) GetBuildLog(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -538,11 +710,18 @@ func (d *deploymentHandler) GetBuildLog(w http.ResponseWriter, r *http.Request) 
 }
 
 // IsBuildRunning implements [DeploymentHandler].
-//
-// Reports whether a deployment is currently building so a client can disable its
-// redeploy control without opening a build log stream. Lookup is by name,
-// matching GetBuildLog, and is scoped to the caller's own namespace: a
-// deployment they do not own simply reads as not building.
+// IsBuildRunning godoc
+// @Summary     check the deployment is building new deployment or not.
+// @Tags        deployments
+// @Produce     json
+// @Param       project_name query string true "project name"
+// @Param       deployment_name query string true "deployment name"
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=schema.IsBuildRunningData} "JSON response"
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /deployment/build-state [get]
 func (d *deploymentHandler) IsBuildRunning(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
