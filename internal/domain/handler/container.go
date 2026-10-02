@@ -42,6 +42,19 @@ func NewContainerHandler(cs service.ContainerService, logger zerolog.Logger, app
 }
 
 // StreamLogs implements [ContainerHandler].
+// StreamLogs godoc
+// @Summary     Stream container logs
+// @Description Streams container logs using Server-Sent Events (SSE).
+// @Tags        containers
+// @Produce     text/event-stream
+// @Param       name path string true "Container name"
+// @Security    BearerAuth
+// @Success     200 {string} string "Server-Sent Events stream"
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     404 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /container/log/{name} [get]
 func (c *containerHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -125,6 +138,18 @@ func (c *containerHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 // RestartContainer implements [ContainerHandler].
+// RestartContainer godoc
+// @Summary     		restart container based on its name
+// @Tags        		containers
+// @Produce     		json
+// @Param       		name path string true "Container name"
+// @Security    		BearerAuth
+// @Success     		200 {object} pkg.Response{message="deployment restarted"}
+// @Failure     		400 {object} pkg.Response{error=string}
+// @Failure     		401 {object} pkg.Response{error=string}
+// @Failure     		404 {object} pkg.Response{error=string}
+// @Failure     		500 {object} pkg.Response{error=string}
+// @Router      		/container/restart/{name} [post]
 func (c *containerHandler) RestartContainer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -160,6 +185,18 @@ func (c *containerHandler) RestartContainer(w http.ResponseWriter, r *http.Reque
 }
 
 // PauseContainer implements [ContainerHandler].
+// PauseContainer godoc
+// @Summary     		pause container based on its name
+// @Tags        		containers
+// @Produce     		json
+// @Param       		name path string true "Container name"
+// @Security    		BearerAuth
+// @Success     		200 {object} pkg.Response{message="deployment paused"}
+// @Failure     		400 {object} pkg.Response{error=string}
+// @Failure     		401 {object} pkg.Response{error=string}
+// @Failure     		404 {object} pkg.Response{error=string}
+// @Failure     		500 {object} pkg.Response{error=string}
+// @Router      		/container/pause/{name} [post]
 func (c *containerHandler) PauseContainer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -195,6 +232,18 @@ func (c *containerHandler) PauseContainer(w http.ResponseWriter, r *http.Request
 }
 
 // UnPauseContainer implements [ContainerHandler].
+// UnPauseContainer godoc
+// @Summary     		unpause container based on its name
+// @Tags        		containers
+// @Produce     		json
+// @Param       		name path string true "Container name"
+// @Security    		BearerAuth
+// @Success     		200 {object} pkg.Response{message="deployment unpaused"}
+// @Failure     		400 {object} pkg.Response{error=string}
+// @Failure     		401 {object} pkg.Response{error=string}
+// @Failure     		404 {object} pkg.Response{error=string}
+// @Failure     		500 {object} pkg.Response{error=string}
+// @Router      		/container/unpause/{name} [post]
 func (c *containerHandler) UnPauseContainer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -230,6 +279,18 @@ func (c *containerHandler) UnPauseContainer(w http.ResponseWriter, r *http.Reque
 }
 
 // StartContainer implements [ContainerHandler].
+// StartContainer godoc
+// @Summary     		start container based on its name
+// @Tags        		containers
+// @Produce     		json
+// @Param       		name path string true "Container name"
+// @Security    		BearerAuth
+// @Success     		200 {object} pkg.Response{message="deployment started"}
+// @Failure     		400 {object} pkg.Response{error=string}
+// @Failure     		401 {object} pkg.Response{error=string}
+// @Failure     		404 {object} pkg.Response{error=string}
+// @Failure     		500 {object} pkg.Response{error=string}
+// @Router      		/container/start/{name} [post]
 func (c *containerHandler) StartContainer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -265,6 +326,18 @@ func (c *containerHandler) StartContainer(w http.ResponseWriter, r *http.Request
 }
 
 // StopContainer implements [ContainerHandler].
+// StopContainer godoc
+// @Summary     		stop container based on its name
+// @Tags        		containers
+// @Produce     		json
+// @Param       		name path string true "Container name"
+// @Security    		BearerAuth
+// @Success     		200 {object} pkg.Response{message="deployment stopped"}
+// @Failure     		400 {object} pkg.Response{error=string}
+// @Failure     		401 {object} pkg.Response{error=string}
+// @Failure     		404 {object} pkg.Response{error=string}
+// @Failure     		500 {object} pkg.Response{error=string}
+// @Router      		/container/stop/{name} [post]
 func (c *containerHandler) StopContainer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
@@ -300,6 +373,18 @@ func (c *containerHandler) StopContainer(w http.ResponseWriter, r *http.Request)
 }
 
 // GetContainerStatus implements [ContainerHandler].
+// GetContainerStatus godoc
+// @Summary     		get container status based on its name
+// @Tags        		containers
+// @Produce     		json
+// @Param       		name path string true "Container name"
+// @Security    		BearerAuth
+// @Success     		200 {object} pkg.Response{data=schema.ContainerStatusResponse}
+// @Failure     		400 {object} pkg.Response{error=string}
+// @Failure     		401 {object} pkg.Response{error=string}
+// @Failure     		404 {object} pkg.Response{error=string}
+// @Failure     		500 {object} pkg.Response{error=string}
+// @Router      		/container/status/{name} [get]
 func (c *containerHandler) GetContainerStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, ok := pkg.AuthUserIDFromContext(ctx)
