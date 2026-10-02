@@ -46,6 +46,14 @@ func NewAuthHandler(as service.AuthService, logger zerolog.Logger) AuthHandler {
 	}
 }
 
+// GithubLogin implements [AuthHandler].
+// @Summary      Redirect to GitHub OAuth login
+// @Description  Redirects the client to the GitHub OAuth authorization URL.
+// @Tags         auth
+// @Success      307 "Temporary Redirect"
+// @Failure      500 {object} pkg.Response{error=string}
+// @Header       307 {string} Location "GitHub OAuth authorization URL"
+// @Router       /auth/github/login [get]
 func (h *authHandler) GithubLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -58,6 +66,18 @@ func (h *authHandler) GithubLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, loginURL, http.StatusTemporaryRedirect)
 }
 
+// GithubCallback implements [AuthHandler].
+// GithubCallback godoc
+// @Summary      Handle GitHub OAuth callback
+// @Description  Handles the GitHub OAuth callback, sets authentication cookies, and returns an HTML response.
+// @Tags         auth
+// @Produce      html
+// @Param        code query string true "GitHub OAuth authorization code"
+// @Success      200 {string} string "HTML callback page"
+// @Failure      400 {object} pkg.Response{error=string}
+// @Failure      401 {object} pkg.Response{error=string}
+// @Failure      500 {object} pkg.Response{error=string}
+// @Router       /auth/github/callback [get]
 func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	code := r.URL.Query().Get("code")
@@ -104,6 +124,19 @@ func (h *authHandler) GithubCallback(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Refresh implements [AuthHandler].
+// Refresh 			godoc
+// @Summary     Handles refresh access token
+// @Description Refreshes the access token using a refresh token supplied either in the request body or the selfish_refresh_token cookie.
+// @Tags        auth
+// @Accept 			json
+// @Produce     json
+// @Param       request body schema.RefreshTokenRequest false "Refresh token request"
+// @Success     200 {object} pkg.Response{message="token refreshed"}
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /auth/refresh [post]
 func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -154,6 +187,16 @@ func (h *authHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	pkg.ReturnSuccess(w, http.StatusOK, "token refreshed", nil)
 }
 
+// Me implements [AuthHandler].
+// Me 					godoc
+// @Summary     Handles get user profile
+// @Tags        auth
+// @Produce     json
+// @Security    BearerAuth
+// @Success     200 {object} pkg.Response{data=schema.UserMeData}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /auth/me [get]
 func (h *authHandler) Me(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -180,6 +223,16 @@ func (h *authHandler) Me(w http.ResponseWriter, r *http.Request) {
 	pkg.ReturnSuccess(w, http.StatusOK, "fetch user success", me)
 }
 
+// Logout implements [AuthHandler].
+// Logout 			godoc
+// @Summary     Handles logout session
+// @Description Logout using a refresh token supplied either in the request body or the selfish_refresh_token cookie.
+// @Tags        auth
+// @Accept 			json
+// @Produce     json
+// @Param       request body schema.RefreshTokenRequest false "Refresh token"
+// @Success     200 {object} pkg.Response{message="logout success"}
+// @Router      /auth/logout [post]
 func (h *authHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
