@@ -53,7 +53,7 @@ type (
 		UpdateDeployment(ctx context.Context, userID pgtype.UUID, params schema.UpdateDeploymentParams) error
 		DeleteDeploymentByDeploymentName(ctx context.Context, userId pgtype.UUID, projectName, deploymentName string) error
 		DeleteDeploymentByDeploymentId(ctx context.Context, userId, deploymentId pgtype.UUID) error
-		TriggerWebhookRedeploy(ctx context.Context, repositoryID int32, installationID int64) ([]schema.WebhookRedeployResult, error)
+		TriggerWebhookRedeploy(ctx context.Context, repositoryID int32, installationID int64, branch string) ([]schema.WebhookRedeployResult, error)
 		IsBuildRunning(ctx context.Context, userID pgtype.UUID, projectName, deploymentName string) (bool, error)
 		buildAndRunContainer(ctx context.Context, p schema.BuildAndRunContainerParams) error
 		ensureDockerNetwork(ctx context.Context, networkName string) error
@@ -1099,14 +1099,16 @@ func (d *deploymentService) GetDeploymentsByProjectId(ctx context.Context, userI
 //
 // The caller is a GitHub webhook, so it supplies no user identity: the owner is
 // resolved from the deployment row itself, and the repository/installation pair
-// is the authorization check. Every active deployment bound to that pair is
-// redeployed as its owner, reusing UpdateDeploymentVersionToLatest so build,
-// swap, and rollback stay identical to a manual deploy.
+// is the authorization check. Only active deployments bound to that pair whose
+// active history tracks the pushed branch are redeployed as their owner,
+// reusing UpdateDeploymentVersionToLatest so build, swap, and rollback stay
+// identical to a manual deploy. Branch comparison is exact: git branch names
+// are case-sensitive.
 //
 // Builds run in background goroutines; this returns as soon as each one is
 // started or folded into an in-flight build, because GitHub gives a delivery
 // only seconds before treating it as failed.
-func (d *deploymentService) TriggerWebhookRedeploy(ctx context.Context, repositoryID int32, installationID int64) ([]schema.WebhookRedeployResult, error) {
+func (d *deploymentService) TriggerWebhookRedeploy(ctx context.Context, repositoryID int32, installationID int64, branch string) ([]schema.WebhookRedeployResult, error) {
 	targets, err := d.dr.GetActiveDeploymentsByRepositoryId(ctx, deployment_repository.GetActiveDeploymentsByRepositoryIdParams{
 		RepositoryID:   repositoryID,
 		InstallationID: installationID,
@@ -1114,12 +1116,12 @@ func (d *deploymentService) TriggerWebhookRedeploy(ctx context.Context, reposito
 	if err != nil {
 		return nil, err
 	}
-	if len(targets) == 0 {
-		return nil, defined_error.ErrWebhookNotFound
-	}
 
 	results := make([]schema.WebhookRedeployResult, 0, len(targets))
 	for _, t := range targets {
+		if t.Branch != branch {
+			continue
+		}
 		result := schema.WebhookRedeployResult{
 			ProjectName:    t.ProjectName,
 			DeploymentName: t.DeploymentName,
@@ -1142,6 +1144,10 @@ func (d *deploymentService) TriggerWebhookRedeploy(ctx context.Context, reposito
 		d.markBuildRunning(ctx, t.UserID, t.ProjectName, t.DeploymentName)
 
 		go d.runWebhookRedeploy(ctx, t.ID, t.UserID, t.ProjectName, t.DeploymentName)
+	}
+
+	if len(results) == 0 {
+		return nil, defined_error.ErrWebhookNotFound
 	}
 
 	return results, nil

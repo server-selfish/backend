@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"github.com/server-selfish/backend/internal/domain/service/deployment"
@@ -20,9 +21,37 @@ const (
 	maxWebhookBodyBytes = 25 << 20
 	// branchRefPrefix distinguishes branch pushes from tag pushes.
 	branchRefPrefix = "refs/heads/"
-	// defaultWebhookBranch applies when github.webhook.branch is unset.
+	// defaultWebhookBranch applies when github.webhook.branches is unset or empty.
 	defaultWebhookBranch = "main"
 )
+
+// resolveWebhookBranches reads the configured branch allow-list, defaulting to
+// main when unset or empty. Accepts a YAML list or a comma-separated env value
+// (GITHUB_WEBHOOK_BRANCHES); a single branch is fine.
+func resolveWebhookBranches() []string {
+	branches := viper.GetStringSlice("github.webhook.branches")
+	kept := make([]string, 0, len(branches))
+	for _, b := range branches {
+		if b = strings.TrimSpace(b); b != "" {
+			kept = append(kept, b)
+		}
+	}
+	if len(kept) == 0 {
+		return []string{defaultWebhookBranch}
+	}
+	return kept
+}
+
+// isWebhookBranchAllowed reports whether the pushed branch is in the allow-list.
+// Comparison is exact: git branch names are case-sensitive.
+func isWebhookBranchAllowed(branch string) bool {
+	for _, b := range resolveWebhookBranches() {
+		if b == branch {
+			return true
+		}
+	}
+	return false
+}
 
 type (
 	WebhookHandler interface {
@@ -65,6 +94,22 @@ func NewWebhookHandler(ds service.DeploymentService, logger zerolog.Logger) Webh
 // identity, only the repository and installation it came from; the deployment
 // owner is resolved server-side from that pair, so a caller can never choose
 // whose deployment gets rebuilt.
+// RedeployOnPush godoc
+// @Summary     Redeploy on GitHub push
+// @Description Public GitHub App webhook. Authenticated by the HMAC SHA-256 signature over the raw body, not by JWT. Only pushes to configured branches trigger a redeploy, and only for deployments whose active history tracks the pushed branch; other events and refs are acknowledged without work.
+// @Tags        webhook
+// @Accept      json
+// @Produce     json
+// @Param       X-Hub-Signature-256 header string true "GitHub HMAC SHA-256 signature (sha256=<hex>)"
+// @Param       X-GitHub-Event header string true "GitHub event name, only push triggers a redeploy"
+// @Param       X-GitHub-Delivery header string false "GitHub delivery ID for tracing"
+// @Param       payload body object true "GitHub push event payload"
+// @Success     202 {object} pkg.Response "webhook accepted, ignored event, or ignored ref"
+// @Failure     400 {object} pkg.Response{error=string}
+// @Failure     401 {object} pkg.Response{error=string}
+// @Failure     404 {object} pkg.Response{error=string}
+// @Failure     500 {object} pkg.Response{error=string}
+// @Router      /webhook/deploy [post]
 func (h *webhookHandler) RedeployOnPush(w http.ResponseWriter, r *http.Request) {
 	secret := viper.GetString("github.webhook.secret")
 	if secret == "" {
@@ -107,11 +152,10 @@ func (h *webhookHandler) RedeployOnPush(w http.ResponseWriter, r *http.Request) 
 
 	// Tag pushes and branch deletions also arrive as push events, and a deleted
 	// branch has no HEAD to clone, so both are acknowledged and dropped.
-	branch := viper.GetString("github.webhook.branch")
-	if branch == "" {
-		branch = defaultWebhookBranch
-	}
-	if payload.Deleted || payload.Ref != branchRefPrefix+branch {
+	// Only branches in the allow-list proceed; the service then redeploys just
+	// the deployments whose active history tracks the pushed branch.
+	pushBranch, ok := strings.CutPrefix(payload.Ref, branchRefPrefix)
+	if payload.Deleted || !ok || !isWebhookBranchAllowed(pushBranch) {
 		pkg.ReturnSuccess(w, http.StatusAccepted, "ignored ref", map[string]string{"ref": payload.Ref})
 		return
 	}
@@ -128,7 +172,7 @@ func (h *webhookHandler) RedeployOnPush(w http.ResponseWriter, r *http.Request) 
 	// sub-millisecond, so responding before the build finishes still leaves
 	// well inside GitHub's delivery deadline. The builds themselves are already
 	// running in background goroutines owned by the service.
-	results, err := h.ds.TriggerWebhookRedeploy(r.Context(), int32(payload.Repository.ID), payload.Installation.ID)
+	results, err := h.ds.TriggerWebhookRedeploy(r.Context(), int32(payload.Repository.ID), payload.Installation.ID, pushBranch)
 	if err != nil {
 		if errors.Is(err, defined_error.ErrWebhookNotFound) {
 			// Expected whenever a push arrives for an installed repository that
