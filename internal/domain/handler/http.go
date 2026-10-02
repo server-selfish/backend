@@ -34,10 +34,8 @@ func RegisterProtectedGithubAppRoutes(r chi.Router, gah GithubAppHandler) {
 func RegisterProjectRoutes(r chi.Router, ph ProjectHandler) {
 	r.Post("/project", ph.CreateProject)
 	r.Get("/project", ph.GetAllProjects)
-	// r.Get("/project/{id}", ph.GetProjectById)
 	r.Get("/project/{name}", ph.GetProjectByName)
 	r.Get("/project/detail/{name}", ph.GetProjectByNameDetail)
-	r.Patch("/project/{id}", ph.UpdateProjectById)
 	r.Delete("/project/{id}", ph.DeleteProjectById)
 }
 
@@ -53,7 +51,6 @@ func RegisterDeploymentRoutes(r chi.Router, dh DeploymentHandler) {
 	r.Get("/deployment/build-state", dh.IsBuildRunning)
 	r.Post("/deployment", dh.CreateNewDeployment)
 	r.Post("/deployment/deploy", dh.UpdateDeploymentVersionToLatest)
-	// r.Post("/deployment/version", dh.CreateNewDeploymentVersionByDeploymentId)
 	r.Patch("/deployment", dh.UpdateDeployment)
 	r.Delete("/deployment", dh.DeleteDeploymentByDeploymentName)
 	r.Delete("/deployment/{id}", dh.DeleteDeploymentByDeploymentId)
