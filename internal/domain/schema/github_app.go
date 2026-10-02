@@ -79,6 +79,9 @@ type GithubAppInstallURLResponse struct {
 type GithubAppInstallURLData struct {
 	URL string `json:"url"`
 }
+type GenerateInstallLinkResponse struct {
+	Link string `json:"link"`
+}
 
 // GithubAppInstallationToken is the response payload for a GitHub
 // installation access token request.
